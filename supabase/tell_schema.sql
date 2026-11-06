@@ -1,0 +1,4 @@
+-- Applied to the Supabase project as migrations "tell_teams_and_sync" and "tell_fix_code_gen".
+-- Kept here for reference: tell_teams, tell_members, tell_items (players/matches/attacks as jsonb),
+-- RLS so only team members read or write a team's data, and tell_create_team / tell_join_team RPCs.
+-- See src/lib/sync.ts for the client side.

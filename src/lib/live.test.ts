@@ -40,3 +40,26 @@ describe('live camera helpers', () => {
     expect(buf.coverage(CONTACT_INDEX / SAMPLE_HZ)).toBe(1);
   });
 });
+
+describe('ball direction and smoothing', () => {
+  it('reads the ball path after contact', async () => {
+    const { ballDirection } = await import('./ball');
+    const path = (vx: number) => Array.from({ length: 10 }, (_, i) => ({ t: 1 + i / 30, x: 0.5 + vx * (i / 30), y: 0.5 - 0.6 * (i / 30) }));
+    expect(ballDirection(path(0.3), 1)?.direction).toBe('right');
+    expect(ballDirection(path(-0.3), 1)?.direction).toBe('left');
+    expect(ballDirection(path(0.02), 1)?.direction).toBe('straight');
+    // Coming back towards the camera (a dig) gives no read.
+    const back = Array.from({ length: 10 }, (_, i) => ({ t: 1 + i / 30, x: 0.5, y: 0.5 + 0.4 * (i / 30) }));
+    expect(ballDirection(back, 1)).toBeNull();
+  });
+
+  it('one-euro filter damps jitter but follows a real move', async () => {
+    const { OneEuro } = await import('./live');
+    const f = new OneEuro();
+    let out = [0];
+    for (let i = 0; i < 60; i++) out = f.filter(i / 30, [0.5 + (i % 2 ? 0.01 : -0.01)]);
+    expect(Math.abs(out[0] - 0.5)).toBeLessThan(0.006);
+    for (let i = 60; i < 75; i++) out = f.filter(i / 30, [0.8]);
+    expect(out[0]).toBeGreaterThan(0.75);
+  });
+});

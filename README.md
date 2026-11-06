@@ -21,8 +21,11 @@ Liberos and blockers can use the same model as a reading drill. Watch a hitter's
    - a check of whether its confidence can be trusted (calibration error)
    - a **world model** check: how well it forecasts the hitter's next 0.5 s of movement
 4. **Hitters.** A tell score from 0 to 100 for each hitter, with a likely range, shot distribution, landing map, and the body cues that differ most between their shots ("shoulder turn: 37° apart between your line and cross shots, 100 ms before contact"). Share cards are sized for stories.
-5. **Live.** Point the phone camera at the court. Tell tracks the hitter in real time, shows its call (line, cross…) with confidence as they swing, and draws the world model's forecast of their next half second as a yellow ghost skeleton. When the arm swing finishes it captures the swing automatically. Tap where the ball went and it's saved as training data, with an instant "Tell read it / missed it". No video is recorded.
-6. **Practice.** A skeleton replay that freezes before contact. Call the shot, then see the answer, the model's call, and its forecast of the rest of the swing. Get three right and it freezes earlier.
+5. **Accounts and teams.** Sign in (Supabase), create a team, and share the 6-letter code. Everyone's swings sync to the team, so every phone trains the same model. Tell still works fully offline without an account.
+6. **Live camera**, two modes:
+   - *Live read*: Tell boxes the hitter in red, shows its call (line, cross…) as they swing, and draws the world model's forecast of their next half second. Swings are captured automatically at contact.
+   - *Record and review* (like Smashspeed): record a rep, then step through it frame by frame with red boxes on the hitter and the ball, the ball's trail, and the contact frame marked. The ball tracker (EfficientDet-Lite0) suggests where the ball went; confirm with one tap and it's training data, with an instant "Tell read it / missed it".
+7. **Practice.** A skeleton replay that freezes before contact. Call the shot, then see the answer, the model's call, and its forecast of the rest of the swing. Get three right and it freezes earlier.
 
 Videos never leave the phone. Tell stores skeletons and tags only, in the browser's storage. Install it to your home screen and it works offline in a gym.
 

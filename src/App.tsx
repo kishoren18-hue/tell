@@ -6,6 +6,8 @@ import { Results } from './screens/Results';
 import { Hitters } from './screens/Hitters';
 import { Practice } from './screens/Practice';
 import { Live } from './screens/Live';
+import { Account } from './screens/Account';
+import { CloudProvider, useCloud } from './cloud';
 
 type Tab = 'film' | 'live' | 'results' | 'hitters' | 'practice';
 
@@ -19,8 +21,15 @@ const TABS: { id: Tab; label: string }[] = [
 
 function Shell() {
   const { ready } = useData();
-  const [tab, setTab] = useState<Tab>('film');
+  const cloud = useCloud();
+  const [tab, setTabState] = useState<Tab>('film');
   const [matchId, setMatchId] = useState<string | null>(null);
+  const [account, setAccount] = useState(false);
+  const setTab = (t: Tab) => {
+    setAccount(false);
+    setTabState(t);
+  };
+  const initial = (((cloud.user?.user_metadata?.name as string) || cloud.user?.email || '?')[0] ?? '?').toUpperCase();
 
   return (
     <div className="app">
@@ -29,10 +38,22 @@ function Shell() {
           Tell
         </button>
         <span className="topbar__tag">How readable is your spike?</span>
+        <button className="topbar__account" onClick={() => setAccount(true)} aria-label={cloud.user ? 'Account and team' : 'Sign in'}>
+          {cloud.user ? (
+            <>
+              <span className="avatar">{initial}</span>
+              {cloud.team && <span className={`dot dot--${cloud.status}`} aria-hidden />}
+            </>
+          ) : (
+            'Sign in'
+          )}
+        </button>
       </header>
       <main className={`main ${tab === 'live' ? 'main--wide' : ''}`} id="main">
         {!ready ? (
           <p className="muted pad">Loading your matches…</p>
+        ) : account ? (
+          <Account onDone={() => setAccount(false)} />
         ) : tab === 'film' ? (
           matchId ? <Tag matchId={matchId} onBack={() => setMatchId(null)} /> : <Film onOpen={setMatchId} onGo={setTab} />
         ) : tab === 'live' ? (
@@ -49,8 +70,8 @@ function Shell() {
         {TABS.map((t) => (
           <button
             key={t.id}
-            className={`tabbar__btn ${tab === t.id ? 'tabbar__btn--on' : ''}`}
-            aria-current={tab === t.id ? 'page' : undefined}
+            className={`tabbar__btn ${tab === t.id && !account ? 'tabbar__btn--on' : ''}`}
+            aria-current={tab === t.id && !account ? 'page' : undefined}
             onClick={() => setTab(t.id)}
           >
             <TabIcon id={t.id} />
@@ -102,7 +123,9 @@ function TabIcon({ id }: { id: Tab }) {
 export default function App() {
   return (
     <DataProvider>
-      <Shell />
+      <CloudProvider>
+        <Shell />
+      </CloudProvider>
     </DataProvider>
   );
 }

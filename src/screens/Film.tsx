@@ -74,6 +74,8 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
         </p>
       </div>
 
+      <RealSwings onGo={onGo} />
+
       {msg && (
         <p className="notice" role="status">
           {msg}
@@ -205,6 +207,50 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
         </div>
       </Section>
     </div>
+  );
+}
+
+function RealSwings({ onGo }: { onGo: (t: Tab) => void }) {
+  const { dataset, report } = useData();
+  const real = dataset.attacks.filter((a) => !a.matchId.startsWith('demo-'));
+  const withPose = real.filter((a) => a.frames && a.frames.filter(Boolean).length >= 23).length;
+  const hitters = dataset.players.filter((p) => !p.id.startsWith('demo-')).length;
+  const trained = !!report && !report.synthetic && report.nAttacks >= 24;
+  const steps = [
+    { done: hitters > 0, title: 'Add your hitters', body: 'Roster below. Mark lefties.', action: null as null | (() => void), cta: '' },
+    {
+      done: withPose >= 24,
+      title: `Capture 24 real swings (${Math.min(withPose, 24)}/24)`,
+      body: 'Live tab: Record and review. Or film a match and tag it here.',
+      action: () => onGo('live'),
+      cta: 'Open camera',
+    },
+    { done: trained, title: 'Train on your swings', body: 'Model tab. Takes a few seconds.', action: () => onGo('results'), cta: 'Train' },
+    { done: trained, title: 'Live calls use your model', body: 'From then on every swing you save makes it sharper.', action: null, cta: '' },
+  ];
+  const next = steps.findIndex((x) => !x.done);
+  if (next === -1) return null;
+  return (
+    <section className="checklist" aria-label="Getting real swings in">
+      <h2>Get your real swings in</h2>
+      <ol>
+        {steps.map((st, i) => (
+          <li key={st.title} className={st.done ? 'done' : i === next ? 'next' : ''}>
+            <span className="checklist__mark" aria-hidden>{st.done ? '✓' : i + 1}</span>
+            <span className="checklist__text">
+              <b>{st.title}</b>
+              <span>{st.body}</span>
+            </span>
+            {i === next && st.action && (
+              <button className="btn btn--tiny btn--primary" onClick={st.action}>{st.cta}</button>
+            )}
+          </li>
+        ))}
+      </ol>
+      {withPose > 0 && withPose < 24 && (
+        <div className="progress" aria-label="Swings captured"><div className="progress__bar" style={{ width: `${(withPose / 24) * 100}%` }} /></div>
+      )}
+    </section>
   );
 }
 

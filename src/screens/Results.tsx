@@ -13,7 +13,12 @@ export function Results({ onGo }: { onGo: (t: Tab) => void }) {
   const [kind, setKind] = useState<ModelKind>(report?.kind ?? 'logistic');
   const [scoreH, setScoreH] = useState(report?.scoreHorizonMs ?? 100);
   const workerRef = useRef<Worker | null>(null);
-  const { usable } = usableAttacks(dataset);
+  const realDs = { ...dataset, attacks: dataset.attacks.filter((a) => !a.matchId.startsWith('demo-')) };
+  const realN = usableAttacks(realDs).usable.length;
+  const [includeDemo, setIncludeDemo] = useState(false);
+  const useReal = realN >= MIN_ATTACKS_TO_TRAIN && !includeDemo;
+  const trainDs = useReal ? realDs : dataset;
+  const { usable } = usableAttacks(trainDs);
 
   const run = () => {
     setErr(null);
@@ -34,7 +39,7 @@ export function Results({ onGo }: { onGo: (t: Tab) => void }) {
         w.terminate();
       }
     };
-    w.postMessage({ type: 'analyze', dataset, options: { scoreHorizonMs: scoreH, train: { kind } } } satisfies WorkerIn);
+    w.postMessage({ type: 'analyze', dataset: trainDs, options: { scoreHorizonMs: scoreH, train: { kind } } } satisfies WorkerIn);
   };
 
   const enough = usable.length >= MIN_ATTACKS_TO_TRAIN;
@@ -72,6 +77,11 @@ export function Results({ onGo }: { onGo: (t: Tab) => void }) {
             </div>
           </fieldset>
         </div>
+        {realN >= MIN_ATTACKS_TO_TRAIN && dataset.attacks.some((a) => a.matchId.startsWith('demo-')) && (
+          <label className="toggle small">
+            <input type="checkbox" checked={includeDemo} onChange={(e) => setIncludeDemo(e.target.checked)} /> Include the synthetic demo data (off: your {realN} real swings only)
+          </label>
+        )}
         {busy ? (
           <div className="busy">
             <Progress value={busy.frac} label="Training" />

@@ -59,7 +59,6 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
   const [selected, setSelected] = useState<string | null>(null);
   const [newPlayer, setNewPlayer] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
-  const workRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   const running = useRef(false);
   const last = useRef<{ hitterId?: string; position: AttackPosition }>({ position: 'left' });
@@ -76,20 +75,30 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
     }
   };
 
-  // Pose extraction queue, run on a second, invisible copy of the video so you can keep watching.
+  const [busyPose, setBusyPose] = useState<{ who: string; frac: number } | null>(null);
+  const cancelPose = useRef(false);
+
+  // Pose extraction queue. Runs on the visible video (phones won't reliably decode a hidden copy),
+  // with an overlay showing progress while it scrubs through the 1.5 s around each contact.
   const pump = useCallback(async () => {
-    if (running.current || !workRef.current || !url) return;
+    if (running.current || !videoRef.current || !url || mode !== 'watch') return;
     const pending = dataset.attacks.filter((a) => a.matchId === matchId && a.frames === null && a.hitterTap && jobs[a.id]?.state !== 'failed');
     const next = pending[0];
     if (!next) return;
     running.current = true;
+    cancelPose.current = false;
+    const who = dataset.players.find((p) => p.id === next.hitterId);
+    const label = who ? (who.number ? `#${who.number}` : who.name) : 'the hitter';
     setJobs((j) => ({ ...j, [next.id]: { state: 'running', frac: 0 } }));
+    setBusyPose({ who: label, frac: 0 });
     try {
-      const v = workRef.current;
+      const v = videoRef.current;
       if (v.readyState < 2) await new Promise((r) => v.addEventListener('loadeddata', r, { once: true }));
-      const { frames, found } = await extractAttackPose(v, next.contactTime, next.hitterTap!, (frac) =>
-        setJobs((j) => ({ ...j, [next.id]: { state: 'running', frac } })),
-      );
+      const { frames, found } = await extractAttackPose(v, next.contactTime, next.hitterTap!, (frac) => {
+        if (cancelPose.current) throw new Error('Stopped');
+        setJobs((j) => ({ ...j, [next.id]: { state: 'running', frac } }));
+        setBusyPose({ who: label, frac });
+      });
       if (found < 10) {
         setJobs((j) => ({ ...j, [next.id]: { state: 'failed', why: `Found the hitter in only ${found} frames` } }));
         update((d) => ({ ...d, attacks: d.attacks.map((a) => (a.id === next.id ? { ...a, frames } : a)) }));
@@ -105,8 +114,9 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
       setJobs((j) => ({ ...j, [next.id]: { state: 'failed', why: (e as Error).message || 'Pose model failed to load' } }));
     } finally {
       running.current = false;
+      setBusyPose(null);
     }
-  }, [dataset.attacks, jobs, matchId, update, url]);
+  }, [dataset.attacks, dataset.players, jobs, matchId, update, url, mode]);
 
   useEffect(() => {
     void pump();
@@ -197,6 +207,9 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
       createdAt: Date.now(),
     };
     last.current = { hitterId: draft.hitterId, position: draft.position };
+    // iPhones only hand decoded frames to the pose model after a play() inside a tap.
+    const el = v();
+    if (el && el.paused) void el.play().then(() => el.pause()).catch(() => {});
     update((d) => ({ ...d, attacks: [...d.attacks, a] }));
     setJobs((j) => ({ ...j, [a.id]: { state: 'queued' } }));
     setDraft(null);
@@ -295,6 +308,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
               ref={videoRef}
               src={url}
               playsInline
+              muted
               preload="auto"
               className="player__video"
               onPlay={() => setPaused(false)}
@@ -308,7 +322,13 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
                 <span>Tap the hitter</span>
               </div>
             )}
-            <video ref={workRef} src={url} muted playsInline preload="auto" className="offscreen" aria-hidden />
+            {busyPose && (
+              <div className="player__busy" role="status">
+                <span>Finding {busyPose.who} in the clip</span>
+                <div className="progress progress--light"><div className="progress__bar" style={{ width: `${Math.round(busyPose.frac * 100)}%` }} /></div>
+                <button className="btn btn--tiny" onClick={() => (cancelPose.current = true)}>Stop</button>
+              </div>
+            )}
           </div>
           <div className="transport">
             <button className="btn btn--icon" onClick={() => step(-1)} aria-label="Back 1 second">−1s</button>
@@ -443,8 +463,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
                   >
                     {fmtTime(a.contactTime)}
                   </button>
-                  <span className="attacks__who">{name(a.hitterId)}</span>
-                  <span className="attacks__shot">{shotName(a.position, a.direction)}</span>
+                  <span className="attacks__who">{name(a.hitterId)} <em>{shotName(a.position, a.direction)}</em></span>
                   <span className="attacks__pose">
                     {job?.state === 'running' ? (
                       <Progress value={job.frac} label="Finding the hitter" />

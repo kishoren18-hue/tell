@@ -8,16 +8,18 @@ import type { PoseFrame } from './types';
 import { CONTACT_INDEX, SAMPLE_HZ, WINDOW_FRAMES } from './types';
 
 const WASM_BASE = `${import.meta.env.BASE_URL}mediapipe/wasm`;
-export const MODEL_URLS = {
+export const MODEL_URLS: Record<'lite' | 'full', string> = {
   lite: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task',
   full: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
 };
 
-const landmarkers: Partial<Record<'lite' | 'full', Promise<PoseLandmarker>>> = {};
+const landmarkers: Record<string, Promise<PoseLandmarker>> = {};
 const lastTs = new WeakMap<PoseLandmarker, number>();
 
-export function getLandmarker(quality: 'lite' | 'full' = 'full'): Promise<PoseLandmarker> {
-  if (!landmarkers[quality]) {
+/** Pose model, cached per quality and backend. `cpu` skips the GPU (some phones' GPU paths fail at runtime). */
+export function getLandmarker(quality: 'lite' | 'full' = 'full', cpu = false): Promise<PoseLandmarker> {
+  const key = `${quality}:${cpu ? 'cpu' : 'auto'}`;
+  if (!landmarkers[key]) {
     const p = (async () => {
       const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
       const make = (delegate: 'GPU' | 'CPU') =>
@@ -31,19 +33,19 @@ export function getLandmarker(quality: 'lite' | 'full' = 'full'): Promise<PoseLa
         });
       // ?delegate=cpu forces the CPU path (useful on devices with a weak or emulated GPU).
       const forceCpu = typeof location !== 'undefined' && new URLSearchParams(location.search).get('delegate') === 'cpu';
-      if (forceCpu) return await make('CPU');
+      if (forceCpu || cpu) return await make('CPU');
       try {
         return await make('GPU');
       } catch {
         return await make('CPU');
       }
     })();
-    landmarkers[quality] = p;
+    landmarkers[key] = p;
     p.catch(() => {
-      delete landmarkers[quality];
+      delete landmarkers[key];
     });
   }
-  return landmarkers[quality]!;
+  return landmarkers[key];
 }
 
 export interface Detected {
@@ -65,22 +67,33 @@ export function detectAll(lm: PoseLandmarker, video: HTMLVideoElement): Detected
   });
 }
 
-function seek(video: HTMLVideoElement, t: number): Promise<void> {
+function seek(video: HTMLVideoElement, t: number, timeoutMs = 2500): Promise<void> {
   return new Promise((resolve, reject) => {
-    const target = Math.max(0, Math.min(video.duration || t, t));
+    const target = Math.max(0, Math.min((video.duration || t) - 0.001, t));
     if (Math.abs(video.currentTime - target) < 1e-4 && video.readyState >= 2) {
       resolve();
       return;
     }
-    const done = () => {
+    let timer = 0;
+    const cleanup = () => {
+      window.clearTimeout(timer);
       video.removeEventListener('seeked', done);
       video.removeEventListener('error', fail);
+    };
+    const done = () => {
+      cleanup();
       resolve();
     };
     const fail = () => {
-      video.removeEventListener('seeked', done);
+      cleanup();
       reject(new Error('The video could not be read at that point.'));
     };
+    timer = window.setTimeout(() => {
+      cleanup();
+      // Some phones skip the seeked event; carry on if a frame is available.
+      if (video.readyState >= 2) resolve();
+      else reject(new Error('The video stopped responding while seeking. Try reopening it.'));
+    }, timeoutMs);
     video.addEventListener('seeked', done);
     video.addEventListener('error', fail);
     video.currentTime = target;

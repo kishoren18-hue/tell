@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.2.2",
+    "@supabase/supabase-js": "^2.119.0",
     "idb-keyval": "^6.3.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"

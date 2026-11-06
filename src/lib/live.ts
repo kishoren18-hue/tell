@@ -122,3 +122,65 @@ export class ContactDetector {
     return null;
   }
 }
+
+/**
+ * One Euro filter (Casiez et al., CHI 2012): smooths jitter when still and
+ * keeps up when moving fast. Used only for drawing; models see raw pose.
+ */
+export class OneEuro {
+  private x: Float64Array | null = null;
+  private dx: Float64Array | null = null;
+  private t = 0;
+  private minCutoff: number;
+  private beta: number;
+  constructor(minCutoff = 1.4, beta = 0.6) {
+    this.minCutoff = minCutoff;
+    this.beta = beta;
+  }
+  private static alpha(cutoff: number, dt: number) {
+    const tau = 1 / (2 * Math.PI * cutoff);
+    return 1 / (1 + tau / dt);
+  }
+  reset() {
+    this.x = null;
+  }
+  filter(t: number, v: number[]): number[] {
+    if (!this.x || this.x.length !== v.length || t - this.t > 0.5) {
+      this.x = Float64Array.from(v);
+      this.dx = new Float64Array(v.length);
+      this.t = t;
+      return v.slice();
+    }
+    const dt = Math.max(1e-3, t - this.t);
+    this.t = t;
+    const ad = OneEuro.alpha(1, dt);
+    const out = new Array<number>(v.length);
+    for (let i = 0; i < v.length; i++) {
+      const d = (v[i] - this.x[i]) / dt;
+      this.dx![i] = ad * d + (1 - ad) * this.dx![i];
+      const a = OneEuro.alpha(this.minCutoff + this.beta * Math.abs(this.dx![i]), dt);
+      this.x[i] = a * v[i] + (1 - a) * this.x[i];
+      out[i] = this.x[i];
+    }
+    return out;
+  }
+}
+
+/** Bounding box of a pose's confidently-seen landmarks, padded. Normalized image coords. */
+export function poseBox(p: number[], pad = 0.18): { x0: number; y0: number; x1: number; y1: number } | null {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (let i = 0; i < 33; i++) {
+    if (p[i * 3 + 2] < 0.4) continue;
+    x0 = Math.min(x0, p[i * 3]);
+    x1 = Math.max(x1, p[i * 3]);
+    y0 = Math.min(y0, p[i * 3 + 1]);
+    y1 = Math.max(y1, p[i * 3 + 1]);
+  }
+  if (!Number.isFinite(x0)) return null;
+  const w = x1 - x0;
+  const h = y1 - y0;
+  return { x0: x0 - w * pad, y0: y0 - h * pad * 0.6, x1: x1 + w * pad, y1: y1 + h * pad * 0.4 };
+}
