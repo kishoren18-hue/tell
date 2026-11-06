@@ -1,0 +1,17 @@
+[project]
+name = "tell"
+version = "0.1.0"
+description = "Predict volleyball attack direction from pose before contact. Training pipeline for the Tell app."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.26", "scikit-learn>=1.4", "torch>=2.2"]
+
+[project.optional-dependencies]
+extract = ["mediapipe>=0.10.14", "opencv-python-headless>=4.9"]
+export = ["onnx>=1.16", "onnxscript>=0.1", "onnxruntime>=1.18"]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["tell"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
