@@ -21,7 +21,8 @@ Liberos and blockers can use the same model as a reading drill. Watch a hitter's
    - a check of whether its confidence can be trusted (calibration error)
    - a **world model** check: how well it forecasts the hitter's next 0.5 s of movement
 4. **Hitters.** A tell score from 0 to 100 for each hitter, with a likely range, shot distribution, landing map, and the body cues that differ most between their shots ("shoulder turn: 37° apart between your line and cross shots, 100 ms before contact"). Share cards are sized for stories.
-5. **Practice.** A skeleton replay that freezes before contact. Call the shot, then see the answer, the model's call, and its forecast of the rest of the swing. Get three right and it freezes earlier.
+5. **Live.** Point the phone camera at the court. Tell tracks the hitter in real time, shows its call (line, cross…) with confidence as they swing, and draws the world model's forecast of their next half second as a yellow ghost skeleton. When the arm swing finishes it captures the swing automatically. Tap where the ball went and it's saved as training data, with an instant "Tell read it / missed it". No video is recorded.
+6. **Practice.** A skeleton replay that freezes before contact. Call the shot, then see the answer, the model's call, and its forecast of the rest of the swing. Get three right and it freezes earlier.
 
 Videos never leave the phone. Tell stores skeletons and tags only, in the browser's storage. Install it to your home screen and it works offline in a gym.
 
@@ -59,6 +60,10 @@ What this says: at a few hundred attacks the small model is the right one, which
 
 The tell scores mostly come out in the planted order. The hitters with strengths 0.9, 0.7 and 0.6 score 62–66. The 0.35 hitter scores 15, and the two weakest score 0 and 9, with ranges that overlap, so the app can't tell those two apart at 50 attacks each. A test that shuffles labels at random checks the pipeline doesn't invent tells (information gain stays under 5%). The world model's 0.5 s pose forecast has about half the error of assuming the hitter freezes.
 
+## Public data
+
+There is no public volleyball dataset with attack-direction labels. The ones on Hugging Face cover whistles, rally/no-rally clips, action frames and player tracking, and pro datasets like Ibrahim et al. label actions, not where the ball went. Tell builds its own: every tagged video attack and every live-captured swing becomes a labeled example.
+
 ## Run it
 
 ```bash
@@ -82,9 +87,9 @@ More in [ml/README.md](ml/README.md). The export format is in [docs/DATA_FORMAT.
 ## Layout
 
 ```
-src/lib/        features, court geometry, pose tracking, synthetic data
+src/lib/        features, court geometry, pose tracking, live camera buffer + contact detection, synthetic data
 src/lib/ml/     classifiers, cross-validation, calibration, tell score, world model
-src/screens/    Film (matches, roster), Tag (video tagging), Model, Hitters, Practice
+src/screens/    Film (matches, roster), Tag (video tagging), Live (camera), Model, Hitters, Practice
 ml/tell/        Python port of the features, LSTM + RallyWorld, training, extraction, ONNX export
 docs/           prior art, data format, plan
 ```

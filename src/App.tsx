@@ -5,11 +5,13 @@ import { Tag } from './screens/Tag';
 import { Results } from './screens/Results';
 import { Hitters } from './screens/Hitters';
 import { Practice } from './screens/Practice';
+import { Live } from './screens/Live';
 
-type Tab = 'film' | 'results' | 'hitters' | 'practice';
+type Tab = 'film' | 'live' | 'results' | 'hitters' | 'practice';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'film', label: 'Film' },
+  { id: 'live', label: 'Live' },
   { id: 'results', label: 'Model' },
   { id: 'hitters', label: 'Hitters' },
   { id: 'practice', label: 'Practice' },
@@ -28,11 +30,13 @@ function Shell() {
         </button>
         <span className="topbar__tag">How readable is your spike?</span>
       </header>
-      <main className="main" id="main">
+      <main className={`main ${tab === 'live' ? 'main--wide' : ''}`} id="main">
         {!ready ? (
           <p className="muted pad">Loading your matches…</p>
         ) : tab === 'film' ? (
           matchId ? <Tag matchId={matchId} onBack={() => setMatchId(null)} /> : <Film onOpen={setMatchId} onGo={setTab} />
+        ) : tab === 'live' ? (
+          <Live onGo={setTab} />
         ) : tab === 'results' ? (
           <Results onGo={setTab} />
         ) : tab === 'hitters' ? (
@@ -65,6 +69,13 @@ function TabIcon({ id }: { id: Tab }) {
       <svg {...common}>
         <rect x="3" y="6" width="13" height="12" rx="2" />
         <path d="M16 10l5-3v10l-5-3" />
+      </svg>
+    );
+  if (id === 'live')
+    return (
+      <svg {...common}>
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7" />
       </svg>
     );
   if (id === 'results')

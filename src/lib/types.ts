@@ -43,6 +43,8 @@ export interface Match {
   videoName?: string;
   videoSize?: number;
   synthetic?: boolean;
+  /** Recorded with the live camera: pose only, no video file. */
+  live?: boolean;
 }
 
 export interface Attack {

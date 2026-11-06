@@ -12,7 +12,7 @@
 import { canonicalDirection, mirrorDirection, realProbs, shotName, TAKEOFF } from '../court';
 import { ENGINEERED_NAMES, N_JOINT_FEATS, sequenceFeatures, summaryFeatures, cutoffIndex } from '../features';
 import { Rng } from '../rng';
-import type { Attack, Dataset, Direction, Hand, Player } from '../types';
+import type { Attack, AttackPosition, Dataset, Direction, Hand, Player, PoseFrame } from '../types';
 import { DIRECTIONS } from '../types';
 import { fitCalibrated, outOfFold, type FittedModel } from './cv';
 import {
@@ -415,14 +415,25 @@ export interface LiveRead {
 
 export function readAttack(m: LiveModels, attack: Attack, hand: Hand, horizonMs = m.horizonMs): LiveRead | null {
   if (!attack.frames) return null;
-  const seq = sequenceFeatures(attack.frames, hand);
+  return readFrames(m, attack.frames, attack.position, hand, horizonMs);
+}
+
+/** Read a 46-frame window (contact at CONTACT_INDEX) for a hitter, as of `horizonMs` before contact. */
+export function readFrames(
+  m: LiveModels,
+  frames: (PoseFrame | null)[],
+  position: AttackPosition,
+  hand: Hand,
+  horizonMs = m.horizonMs,
+): LiveRead | null {
+  const seq = sequenceFeatures(frames, hand);
   if (!seq) return null;
   const x = summaryFeatures(seq, horizonMs);
   const probs = realProbs(m.classifier.predict(x), hand);
   let landing: LiveRead['landing'] = null;
   if (m.landing) {
     const [dx, depth] = predictLanding(m.landing, x);
-    const t = TAKEOFF[attack.position];
+    const t = TAKEOFF[position];
     landing = {
       x: Math.max(0, Math.min(9, t.x + (hand === 'L' ? -dx : dx))),
       y: Math.max(0.3, Math.min(9, depth)),

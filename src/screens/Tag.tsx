@@ -279,6 +279,8 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
 
       {match.synthetic ? (
         <p className="notice">This is a synthetic demo match, so there's no video. Its attacks show up in Model, Hitters and Practice.</p>
+      ) : match.live ? (
+        <p className="notice">Recorded with the live camera, so there's no video. Only the skeletons were kept. Capture more in Live.</p>
       ) : !url ? (
         <label className="dropzone">
           <input type="file" accept="video/*" onChange={(e) => e.target.files?.[0] && openFile(e.target.files[0])} />

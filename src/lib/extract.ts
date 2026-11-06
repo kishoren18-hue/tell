@@ -13,12 +13,12 @@ export const MODEL_URLS = {
   full: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task',
 };
 
-let landmarker: Promise<PoseLandmarker> | null = null;
-let lastTs = 0;
+const landmarkers: Partial<Record<'lite' | 'full', Promise<PoseLandmarker>>> = {};
+const lastTs = new WeakMap<PoseLandmarker, number>();
 
 export function getLandmarker(quality: 'lite' | 'full' = 'full'): Promise<PoseLandmarker> {
-  if (!landmarker) {
-    landmarker = (async () => {
+  if (!landmarkers[quality]) {
+    const p = (async () => {
       const fileset = await FilesetResolver.forVisionTasks(WASM_BASE);
       const make = (delegate: 'GPU' | 'CPU') =>
         PoseLandmarker.createFromOptions(fileset, {
@@ -29,17 +29,40 @@ export function getLandmarker(quality: 'lite' | 'full' = 'full'): Promise<PoseLa
           minPosePresenceConfidence: 0.35,
           minTrackingConfidence: 0.35,
         });
+      // ?delegate=cpu forces the CPU path (useful on devices with a weak or emulated GPU).
+      const forceCpu = typeof location !== 'undefined' && new URLSearchParams(location.search).get('delegate') === 'cpu';
+      if (forceCpu) return await make('CPU');
       try {
         return await make('GPU');
       } catch {
         return await make('CPU');
       }
     })();
-    landmarker.catch(() => {
-      landmarker = null;
+    landmarkers[quality] = p;
+    p.catch(() => {
+      delete landmarkers[quality];
     });
   }
-  return landmarker;
+  return landmarkers[quality]!;
+}
+
+export interface Detected {
+  frame: PoseFrame;
+  c: [number, number];
+}
+
+/** Detect every person in the current video frame. Timestamps are kept increasing per landmarker, as VIDEO mode requires. */
+export function detectAll(lm: PoseLandmarker, video: HTMLVideoElement): Detected[] {
+  const ts = Math.max((lastTs.get(lm) ?? 0) + 1, performance.now());
+  lastTs.set(lm, ts);
+  const res = lm.detectForVideo(video, ts);
+  return res.landmarks.map((pts, k) => {
+    const p: number[] = [];
+    for (const q of pts) p.push(q.x, q.y, q.visibility ?? 1);
+    const w: number[] = [];
+    for (const q of res.worldLandmarks[k]) w.push(q.x, q.y, q.z);
+    return { frame: { w, p }, c: imageCentroid(p) };
+  });
 }
 
 function seek(video: HTMLVideoElement, t: number): Promise<void> {
@@ -64,10 +87,7 @@ function seek(video: HTMLVideoElement, t: number): Promise<void> {
   });
 }
 
-interface Candidate {
-  frame: PoseFrame;
-  c: [number, number];
-}
+type Candidate = Detected;
 
 /**
  * Sample WINDOW_FRAMES frames around `contactTime`, detect everyone in each,
@@ -88,15 +108,7 @@ export async function extractAttackPose(
   for (let i = 0; i < WINDOW_FRAMES; i++) {
     const t = contactTime + (i - CONTACT_INDEX) / SAMPLE_HZ;
     await seek(video, t);
-    lastTs = Math.max(lastTs + 1, performance.now());
-    const res = lm.detectForVideo(video, lastTs);
-    const cands: Candidate[] = res.landmarks.map((pts, k) => {
-      const p: number[] = [];
-      for (const q of pts) p.push(q.x, q.y, q.visibility ?? 1);
-      const w: number[] = [];
-      for (const q of res.worldLandmarks[k]) w.push(q.x, q.y, q.z);
-      return { frame: { w, p }, c: imageCentroid(p) };
-    });
+    const cands: Candidate[] = detectAll(lm, video);
     all.push(cands);
     onProgress?.((i + 1) / WINDOW_FRAMES);
   }
