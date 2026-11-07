@@ -21,7 +21,7 @@ Liberos and blockers can use the same model as a reading drill. Watch a hitter's
    - a check of whether its confidence can be trusted (calibration error)
    - a **world model** check: how well it forecasts the hitter's next 0.5 s of movement
 4. **Hitters.** A tell score from 0 to 100 for each hitter, with a likely range, shot distribution, landing map, and the body cues that differ most between their shots ("shoulder turn: 37° apart between your line and cross shots, 100 ms before contact"). Share cards are sized for stories.
-5. **Accounts and teams.** Sign in (Supabase), create a team, and share the 6-letter code. Everyone's swings sync to the team, so every phone trains the same model. Tell still works fully offline without an account.
+5. **Individual or Team.** Individual tracks one hitter and works offline as a guest. Sign in and open Individual to move guest swings into your private workspace and sync across devices. In Team, sign in to create a team or join with a 6-letter code. Each team has its own shared swings and roster.
 6. **Live camera**, two modes:
    - *Live read*: Tell boxes the hitter in red, shows its call (line, cross…) as they swing, and draws the world model's forecast of their next half second. Swings are captured automatically at contact.
    - *Record and review* (like Smashspeed): record a rep, then step through it frame by frame with red boxes on the hitter and the ball, the ball's trail, and the contact frame marked. The ball tracker (EfficientDet-Lite0) suggests where the ball went; confirm with one tap and it's training data, with an instant "Tell read it / missed it".
@@ -86,6 +86,10 @@ pytest -q                                     # includes a TypeScript/Python fea
 ```
 
 More in [ml/README.md](ml/README.md). The export format is in [docs/DATA_FORMAT.md](docs/DATA_FORMAT.md).
+
+## Deploying private sync
+
+Apply [the private workspace migration](supabase/tell_personal_items.sql) to the existing Supabase project before releasing this version. It stores one authenticated user's private items separately from the existing team tables. Existing local datasets can be opened through **Open previous device data** on the welcome page. That workspace stays on the device because older datasets could contain a mix of personal and team swings.
 
 ## Layout
 

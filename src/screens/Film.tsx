@@ -4,11 +4,11 @@ import { Section, download } from '../components/ui';
 import { mergeDatasets, validateDataset } from '../lib/store';
 import { makeDemoDataset } from '../lib/synth';
 import type { Hand, Player } from '../lib/types';
-import { emptyDataset, uid } from '../lib/types';
+import { emptyDataset, INDIVIDUAL_HITTER, uid } from '../lib/types';
 import { useData } from '../state';
 
 export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t: Tab) => void }) {
-  const { dataset, update, replace, setReport } = useData();
+  const { dataset, individual, update, replace, setReport } = useData();
   const [name, setName] = useState('');
   const [confirmClear, setConfirmClear] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -26,9 +26,14 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
   };
 
   const loadDemo = () => {
-    replace(mergeDatasets(dataset, makeDemoDataset()));
+    const demo = makeDemoDataset();
+    if (individual) {
+      demo.players = demo.players.slice(0, 1);
+      demo.attacks = demo.attacks.filter((attack) => attack.hitterId === demo.players[0]?.id);
+    }
+    replace(mergeDatasets(dataset, demo));
     setReport(null);
-    setMsg('Demo data loaded: 300 synthetic attacks from 6 made-up hitters. Open Model to train on it.');
+    setMsg(`Demo data loaded: ${demo.attacks.length} synthetic attacks. Open Model to train on it.`);
   };
 
   const removeDemo = () => {
@@ -50,6 +55,18 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
   const importData = async (f: File) => {
     try {
       const incoming = validateDataset(JSON.parse(await f.text()));
+      if (individual) {
+        const hitters = incoming.players.filter((p) => !p.id.startsWith('demo-'));
+        const existing = dataset.players.find((p) => p.id === INDIVIDUAL_HITTER);
+        const hitter = hitters[0];
+        if (hitters.length > 1 || (existing && hitter && hitter.id !== existing.id)) {
+          throw new Error('This export has a different hitter or a roster. Open a Team workspace to import it.');
+        }
+        if (hitter) {
+          incoming.players = incoming.players.map((p) => p.id === hitter.id ? { ...p, id: INDIVIDUAL_HITTER } : p);
+          incoming.attacks = incoming.attacks.map((a) => a.hitterId === hitter.id ? { ...a, hitterId: INDIVIDUAL_HITTER } : a);
+        }
+      }
       const before = dataset.attacks.length;
       const merged = mergeDatasets(dataset, incoming);
       replace(merged);
@@ -67,7 +84,7 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
   return (
     <div className="screen">
       <div className="intro">
-        <h1>Film a match. Tag the spikes. See who gives their shot away.</h1>
+        <h1>{individual ? 'Film a match. Tag your spikes.' : 'Film a match. Tag the spikes. See who gives their shot away.'}</h1>
         <p>
           Tell watches each hitter's approach and arm swing and guesses where the ball is going before contact. The
           better it guesses, the more readable you are.
@@ -255,15 +272,15 @@ function RealSwings({ onGo }: { onGo: (t: Tab) => void }) {
 }
 
 export function Roster() {
-  const { dataset, update } = useData();
+  const { dataset, individual, update } = useData();
   const [num, setNum] = useState('');
   const [pname, setPname] = useState('');
   const [hand, setHand] = useState<Hand>('R');
   const players = dataset.players.filter((p) => !p.id.startsWith('demo-'));
 
   const add = () => {
-    if (!num.trim() && !pname.trim()) return;
-    const p: Player = { id: uid('p'), name: pname.trim() || `#${num.trim()}`, number: num.trim() || undefined, hand };
+    if ((!num.trim() && !pname.trim()) || (individual && players.length)) return;
+    const p: Player = { id: individual ? INDIVIDUAL_HITTER : uid('p'), name: pname.trim() || `#${num.trim()}`, number: num.trim() || undefined, hand };
     update((d) => ({ ...d, players: [...d.players, p] }));
     setNum('');
     setPname('');
@@ -271,8 +288,8 @@ export function Roster() {
   };
 
   return (
-    <Section title="Roster">
-      <form
+    <Section title={individual ? "Your hitter" : "Roster"}>
+      {(!individual || players.length === 0) && <form
         className="roster-form"
         onSubmit={(e) => {
           e.preventDefault();
@@ -291,9 +308,9 @@ export function Roster() {
         <button className="btn" type="submit">
           Add
         </button>
-      </form>
+      </form>}
       {players.length === 0 ? (
-        <p className="muted small">Add your hitters so you can tag who hit each ball. Hitting hand matters: Tell mirrors lefties so one model reads everyone.</p>
+        <p className="muted small">{individual ? 'Add the hitter you want to track, including their hitting hand.' : 'Add your hitters so you can tag who hit each ball. Hitting hand matters because Tell mirrors lefties.'}</p>
       ) : (
         <ul className="roster">
           {players.map((p) => (

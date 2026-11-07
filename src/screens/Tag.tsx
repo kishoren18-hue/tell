@@ -5,7 +5,7 @@ import { directionFromLanding, shotName } from '../lib/court';
 import { extractAttackPose } from '../lib/extract';
 import { BONES } from '../lib/pose';
 import type { Attack, AttackPosition, Direction, Outcome, ShotType } from '../lib/types';
-import { CONTACT_INDEX, uid } from '../lib/types';
+import { CONTACT_INDEX, INDIVIDUAL_HITTER, uid } from '../lib/types';
 import { useData } from '../state';
 
 const POSITIONS: { value: AttackPosition; label: string }[] = [
@@ -42,13 +42,13 @@ interface Draft {
 type Job = { state: 'queued' } | { state: 'running'; frac: number } | { state: 'failed'; why: string };
 
 export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }) {
-  const { dataset, update } = useData();
+  const { dataset, individual, update } = useData();
   const match = dataset.matches.find((m) => m.id === matchId);
   const attacks = useMemo(
     () => dataset.attacks.filter((a) => a.matchId === matchId).sort((a, b) => a.contactTime - b.contactTime),
     [dataset.attacks, matchId],
   );
-  const players = dataset.players;
+  const players = dataset.players.filter((p) => !p.id.startsWith('demo-'));
   const [url, setUrl] = useState<string | null>(null);
   const [mode, setMode] = useState<'watch' | 'tap' | 'details'>('watch');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -141,7 +141,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
     el.pause();
     setDraft({
       contactTime: el.currentTime,
-      hitterId: last.current.hitterId,
+      hitterId: individual ? players[0]?.id : last.current.hitterId,
       position: last.current.position,
       shotType: 'hard',
       outcome: 'kill',
@@ -218,8 +218,8 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
 
   const addPlayer = () => {
     const n = newPlayer.trim();
-    if (!n) return;
-    const id = uid('p');
+    if (!n || (individual && players.length)) return;
+    const id = individual ? INDIVIDUAL_HITTER : uid('p');
     const isNum = /^\d+$/.test(n);
     update((d) => ({ ...d, players: [...d.players, { id, name: isNum ? `#${n}` : n, number: isNum ? n : undefined, hand: 'R' }] }));
     setDraft((dr) => (dr ? { ...dr, hitterId: id } : dr));
@@ -378,7 +378,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
           <fieldset className="chips">
             <legend>Hitter</legend>
             <div className="chips__row">
-              {players.filter((p) => !p.id.startsWith('demo-')).map((p) => (
+              {players.map((p) => (
                 <button
                   type="button"
                   key={p.id}
@@ -389,7 +389,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
                   {p.number ? `#${p.number}` : p.name}
                 </button>
               ))}
-              <form
+              {(!individual || players.length === 0) && <form
                 className="chip-add"
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -397,7 +397,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
                 }}
               >
                 <input className="input input--chip" placeholder="New #" value={newPlayer} onChange={(e) => setNewPlayer(e.target.value)} aria-label="Add hitter by number or name" />
-              </form>
+              </form>}
             </div>
           </fieldset>
           <Chips label="Attacked from" value={draft.position} options={POSITIONS} onChange={(position) => setDraft({ ...draft, position })} />

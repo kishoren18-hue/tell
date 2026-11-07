@@ -29,6 +29,9 @@ export interface PoseFrame {
   p: number[];
 }
 
+// One stable profile across devices in each private workspace.
+export const INDIVIDUAL_HITTER = 'individual-hitter';
+
 export interface Player {
   id: string;
   name: string;

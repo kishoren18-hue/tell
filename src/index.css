@@ -394,3 +394,35 @@ p { margin: 0; }
 .checklist li.done .checklist__mark { border-color: var(--ok); background: var(--ok); color: #fff; }
 .checklist__text { display: flex; flex-direction: column; font-size: 0.9rem; line-height: 1.3; }
 .checklist__text b { font-size: 1rem; }
+
+.welcome {
+  width: min(100% - 2rem, 34rem);
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+.welcome__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: clamp(2.5rem, 12vh, 7rem);
+}
+.welcome__choices {
+  display: grid;
+  gap: .75rem;
+  margin: 1.5rem 0;
+}
+.welcome__choice {
+  display: grid;
+  gap: .35rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid currentColor;
+  border-radius: .85rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.welcome__choice strong { font-size: 1.15rem; }
+.welcome__choice:hover,
+.welcome__choice:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
