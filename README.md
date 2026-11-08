@@ -2,7 +2,7 @@
 
 **How readable is your spike?** Film a volleyball match on your phone and tag the attacks. Tell watches each hitter's approach and arm swing and predicts where the ball is going *before contact*. Every hitter gets a **tell score**: how much the model's read narrows down their shot.
 
-Liberos and blockers can use the same model as a reading drill. Watch a hitter's swing freeze before contact, call the shot, and see if you beat the model.
+Liberos and blockers can use the same model as a reading drill. Watch a hitter's swing freeze before contact, call the shot, and see if you beat the model. To review your own defense, open a match video and choose **Review a defender**. Mark where you stood at contact and when you first moved. Tell shows how far before or after contact that first step was.
 
 <p align="center">
   <img src="docs/img/hitters.png" width="230" alt="Tell scores per hitter" />

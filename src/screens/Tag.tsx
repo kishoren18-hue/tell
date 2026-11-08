@@ -4,8 +4,8 @@ import { Chips, Progress, fmtTime } from '../components/ui';
 import { directionFromLanding, shotName } from '../lib/court';
 import { extractAttackPose } from '../lib/extract';
 import { BONES } from '../lib/pose';
-import type { Attack, AttackPosition, Direction, Outcome, ShotType } from '../lib/types';
-import { CONTACT_INDEX, INDIVIDUAL_HITTER, uid } from '../lib/types';
+import type { Attack, AttackPosition, DefenseReview, Direction, Outcome, ShotType } from '../lib/types';
+import { CONTACT_INDEX, INDIVIDUAL_HITTER, SAMPLE_HZ, uid } from '../lib/types';
 import { useData } from '../state';
 
 const POSITIONS: { value: AttackPosition; label: string }[] = [
@@ -39,6 +39,20 @@ interface Draft {
   outcome: Outcome;
 }
 
+type DefenseDraft = Omit<DefenseReview, 'contactPoint'> & { contactPoint?: DefenseReview['contactPoint'] };
+const DEFENSE_ROLES: { value: DefenseReview['role']; label: string }[] = [
+  { value: 'libero', label: 'Libero / defender' },
+  { value: 'blocker', label: 'Blocker' },
+];
+const FRAME_SECONDS = 1 / SAMPLE_HZ;
+
+function firstStepLabel(contact: number, firstStep?: number) {
+  if (firstStep === undefined) return 'First step unmarked';
+  const offset = firstStep - contact;
+  if (Math.abs(offset) < FRAME_SECONDS / 2) return 'First step at contact';
+  return `First step ~${Math.round(Math.abs(offset) * 1000)} ms ${offset < 0 ? 'before' : 'after'} contact`;
+}
+
 type Job = { state: 'queued' } | { state: 'running'; frac: number } | { state: 'failed'; why: string };
 
 export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }) {
@@ -50,13 +64,16 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
   );
   const players = dataset.players.filter((p) => !p.id.startsWith('demo-'));
   const [url, setUrl] = useState<string | null>(null);
-  const [mode, setMode] = useState<'watch' | 'tap' | 'details'>('watch');
+  const [videoReady, setVideoReady] = useState(false);
+  const [mode, setMode] = useState<'watch' | 'tap' | 'details' | 'defense'>('watch');
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [defense, setDefense] = useState<DefenseDraft | null>(null);
   const [rate, setRate] = useState(1);
   const [paused, setPaused] = useState(true);
   const [now, setNow] = useState(0);
   const [jobs, setJobs] = useState<Record<string, Job>>({});
   const [selected, setSelected] = useState<string | null>(null);
+  const atDefenseContact = defense !== null && Math.abs(now - defense.contactTime) < FRAME_SECONDS / 2;
   const [newPlayer, setNewPlayer] = useState('');
   const videoRef = useRef<HTMLVideoElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -69,6 +86,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
 
   const openFile = (f: File) => {
     if (url) URL.revokeObjectURL(url);
+    setVideoReady(false);
     setUrl(URL.createObjectURL(f));
     if (match && !match.synthetic) {
       update((d) => ({ ...d, matches: d.matches.map((m) => (m.id === matchId ? { ...m, videoName: f.name, videoSize: f.size } : m)) }));
@@ -123,11 +141,17 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
   }, [pump]);
 
   const v = () => videoRef.current;
+  const seek = (time: number) => {
+    const el = v();
+    if (!el || !Number.isFinite(el.duration)) return;
+    el.pause();
+    el.currentTime = Math.max(0, Math.min(el.duration, time));
+    setNow(el.currentTime);
+  };
   const step = (dt: number) => {
     const el = v();
     if (!el) return;
-    el.pause();
-    el.currentTime = Math.max(0, Math.min(el.duration || 0, el.currentTime + dt));
+    seek(el.currentTime + dt);
   };
   const toggle = () => {
     const el = v();
@@ -137,7 +161,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
   };
   const markContact = () => {
     const el = v();
-    if (!el) return;
+    if (!el || !videoReady || running.current) return;
     el.pause();
     setDraft({
       contactTime: el.currentTime,
@@ -152,12 +176,14 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      const target = e.target as HTMLElement | null;
+      if (running.current || target?.closest('input, textarea, select, [contenteditable="true"]')) return;
       if (e.key === ' ') {
+        if (target?.closest('button')) return;
         e.preventDefault();
         toggle();
-      } else if (e.key === ',') step(-1 / 30);
-      else if (e.key === '.') step(1 / 30);
+      } else if (e.key === ',') step(-FRAME_SECONDS);
+      else if (e.key === '.') step(FRAME_SECONDS);
       else if (e.key === 'ArrowLeft') step(-1);
       else if (e.key === 'ArrowRight') step(1);
       else if (e.key.toLowerCase() === 'm' && mode === 'watch') markContact();
@@ -165,6 +191,44 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   });
+
+  const openDefense = (review?: DefenseReview) => {
+    const el = v();
+    if (!el || !videoReady || running.current) return;
+    seek(review?.contactTime ?? el.currentTime);
+    setSelected(null);
+    setDefense(review ?? {
+      id: uid('def'),
+      defender: individual && players[0] ? players[0].name : '',
+      role: 'libero',
+      contactTime: el.currentTime,
+    });
+    setMode('defense');
+  };
+
+  const closeDefense = () => {
+    setDefense(null);
+    setMode('watch');
+  };
+
+  const saveDefense = (review: DefenseDraft) => {
+    if (!review.contactPoint || !review.defender.trim()) return;
+    const saved: DefenseReview = { ...review, defender: review.defender.trim(), contactPoint: review.contactPoint };
+    update((d) => ({
+      ...d,
+      matches: d.matches.map((m) => {
+        if (m.id !== matchId) return m;
+        const reviews = m.defenseReviews ?? [];
+        return {
+          ...m,
+          defenseReviews: reviews.some((item) => item.id === saved.id)
+            ? reviews.map((item) => item.id === saved.id ? saved : item)
+            : [...reviews, saved],
+        };
+      }),
+    }));
+    closeDefense();
+  };
 
   /** Normalized position inside the displayed video, accounting for letterboxing. */
   const videoPoint = (e: PointerEvent<HTMLElement>) => {
@@ -181,11 +245,14 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
   };
 
   const onOverlayTap = (e: PointerEvent<HTMLDivElement>) => {
-    if (mode !== 'tap' || !draft) return;
+    if (mode === 'defense' && (!atDefenseContact || !v()?.paused || v()?.seeking)) return;
     const p = videoPoint(e);
     if (p.x < 0 || p.x > 1 || p.y < 0 || p.y > 1) return;
-    setDraft({ ...draft, tap: p });
-    setMode('details');
+    if (mode === 'defense' && defense) setDefense({ ...defense, contactPoint: p });
+    if (mode === 'tap' && draft) {
+      setDraft({ ...draft, tap: p });
+      setMode('details');
+    }
   };
 
   const save = () => {
@@ -237,7 +304,8 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
     c.height = r.height;
     g.clearRect(0, 0, c.width, c.height);
     const a = attacks.find((x) => x.id === selected);
-    const showTap = mode === 'details' && draft?.tap;
+    const marker = mode === 'details' ? draft?.tap
+      : mode === 'defense' && atDefenseContact ? defense?.contactPoint : undefined;
     const vw = el.videoWidth || r.width;
     const vh = el.videoHeight || r.height;
     const scale = Math.min(r.width / vw, r.height / vh);
@@ -246,8 +314,8 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
     const ox = (r.width - dw) / 2;
     const oy = (r.height - dh) / 2;
     const P = (x: number, y: number): [number, number] => [ox + x * dw, oy + y * dh];
-    if (showTap) {
-      const [x, y] = P(draft!.tap!.x, draft!.tap!.y);
+    if (marker) {
+      const [x, y] = P(marker.x, marker.y);
       g.strokeStyle = '#f2c230';
       g.lineWidth = 3;
       g.beginPath();
@@ -270,7 +338,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
       g.lineTo(x2, y2);
       g.stroke();
     }
-  }, [selected, now, attacks, mode, draft]);
+  }, [selected, now, attacks, mode, draft, defense, atDefenseContact]);
 
   if (!match) return <p className="pad">This match no longer exists.</p>;
 
@@ -278,6 +346,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
     const p = players.find((x) => x.id === id);
     return p ? (p.number ? `#${p.number}` : p.name) : 'Unknown';
   };
+  const reviews = match.defenseReviews ?? [];
   const needPose = attacks.filter((a) => a.frames === null).length;
   const direction = draft?.landing ? directionFromLanding(draft.position, draft.landing) : draft?.direction;
 
@@ -311,6 +380,7 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
               muted
               preload="auto"
               className="player__video"
+              onLoadedMetadata={(e) => setVideoReady(Number.isFinite(e.currentTarget.duration))}
               onPlay={() => setPaused(false)}
               onPause={() => setPaused(true)}
               onTimeUpdate={(e) => setNow(e.currentTarget.currentTime)}
@@ -320,6 +390,11 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
             {mode === 'tap' && (
               <div className="player__tap" onPointerDown={onOverlayTap} role="button" aria-label="Tap the hitter">
                 <span>Tap the hitter</span>
+              </div>
+            )}
+            {mode === 'defense' && atDefenseContact && paused && (
+              <div className="player__tap" onPointerDown={onOverlayTap}>
+                <span>{defense?.contactPoint ? 'Tap again to adjust the defender marker' : 'Tap the floor at the defender’s feet'}</span>
               </div>
             )}
             {busyPose && (
@@ -332,11 +407,11 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
           </div>
           <div className="transport">
             <button className="btn btn--icon" onClick={() => step(-1)} aria-label="Back 1 second">−1s</button>
-            <button className="btn btn--icon" onClick={() => step(-1 / 30)} aria-label="Back 1 frame">−1f</button>
+            <button className="btn btn--icon" onClick={() => step(-FRAME_SECONDS)} aria-label="Back 1 frame">−1f</button>
             <button className="btn btn--icon btn--play" onClick={toggle} aria-label={paused ? 'Play' : 'Pause'}>
               {paused ? 'Play' : 'Pause'}
             </button>
-            <button className="btn btn--icon" onClick={() => step(1 / 30)} aria-label="Forward 1 frame">+1f</button>
+            <button className="btn btn--icon" onClick={() => step(FRAME_SECONDS)} aria-label="Forward 1 frame">+1f</button>
             <button className="btn btn--icon" onClick={() => step(1)} aria-label="Forward 1 second">+1s</button>
             <button
               className="btn btn--icon"
@@ -352,9 +427,10 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
             <span className="transport__time">{fmtTime(now)}</span>
           </div>
           {mode === 'watch' && (
-            <button className="btn btn--primary btn--block btn--big" onClick={markContact}>
-              Mark contact
-            </button>
+            <div className="row wrap">
+              <button className="btn btn--primary" disabled={!videoReady || Boolean(busyPose)} onClick={markContact}>Mark contact</button>
+              <button className="btn" disabled={!videoReady || Boolean(busyPose)} onClick={() => openDefense()}>Review a defender</button>
+            </div>
           )}
           {mode === 'watch' && <p className="muted small center">Pause on the frame where the hand meets the ball, then mark it. Keys: space, comma/period for frames, M to mark.</p>}
           {mode === 'tap' && (
@@ -435,6 +511,74 @@ export function Tag({ matchId, onBack }: { matchId: string; onBack: () => void }
           </div>
           {!draft.hitterId && <p className="muted small">Pick or add the hitter to save.</p>}
         </div>
+      )}
+
+      {defense && mode === 'defense' && (
+        <section className="sheet" aria-label="Defender review">
+          <div className="sheet__head">
+            <h2>Defender review</h2>
+            <button className="btn btn--quiet btn--tiny" onClick={closeDefense}>Cancel</button>
+          </div>
+          <label className="field">
+            <span className="field__label">Player name or jersey number</span>
+            <input className="input" value={defense.defender} maxLength={80}
+              onChange={(e) => setDefense({ ...defense, defender: e.target.value })} />
+          </label>
+          <Chips label="Role" value={defense.role} options={DEFENSE_ROLES} onChange={(role) => setDefense({ ...defense, role })} />
+          <p className="muted small">Contact starts at the frame you paused on. To change it, find the frame where the hitter touches the ball and select Set contact here. Tap the defender’s feet, then use the frame controls to find their first step.</p>
+          <div className="row wrap">
+            <button className="btn btn--tiny" onClick={() => seek(defense.contactTime)}>Go to contact</button>
+            <button className="btn btn--tiny" disabled={!paused} onClick={() => {
+              const contactTime = v()?.currentTime;
+              if (contactTime === undefined) return;
+              setDefense({ ...defense, contactTime, contactPoint: atDefenseContact ? defense.contactPoint : undefined });
+            }}>Set contact here</button>
+            <span className="small">Contact at {fmtTime(defense.contactTime)} · {defense.contactPoint ? 'Position marked' : 'Position unmarked'}</span>
+          </div>
+          <div className="row wrap">
+            <button className="btn btn--tiny" disabled={!paused} onClick={() => {
+              const firstStepTime = v()?.currentTime;
+              if (firstStepTime !== undefined) setDefense({ ...defense, firstStepTime });
+            }}>Mark first step here</button>
+            {defense.firstStepTime !== undefined && (
+              <>
+                <button className="btn btn--tiny" onClick={() => seek(defense.firstStepTime!)}>Go to first step</button>
+                <button className="btn btn--quiet btn--tiny" onClick={() => setDefense({ ...defense, firstStepTime: undefined })}>Clear first step</button>
+              </>
+            )}
+          </div>
+          <div className="row wrap">
+            <span className="small" aria-live="polite">{firstStepLabel(defense.contactTime, defense.firstStepTime)}</span>
+            <button className="btn btn--primary" disabled={!defense.defender.trim() || !defense.contactPoint} onClick={() => saveDefense(defense)}>Save defender review</button>
+          </div>
+        </section>
+      )}
+
+      {!match.synthetic && !match.live && (url || reviews.length > 0) && (
+        <section className="section">
+          <div className="section__head"><h2>Defender reviews</h2></div>
+          {reviews.length === 0 ? (
+            <p className="muted small">Mark where a libero or blocker was at contact and see when they took their first step.</p>
+          ) : (
+            <ul className="list">
+              {reviews.map((review) => (
+                <li key={review.id} className="row wrap">
+                  <span className="list__main">
+                    <strong>{review.defender} · {DEFENSE_ROLES.find(({ value }) => value === review.role)?.label}</strong>
+                    <span className="muted small">{fmtTime(review.contactTime)} · {firstStepLabel(review.contactTime, review.firstStepTime)}</span>
+                  </span>
+                  <button className="btn btn--tiny" disabled={!videoReady || mode !== 'watch' || Boolean(busyPose)} onClick={() => openDefense(review)}>Review clip</button>
+                  <button className="btn btn--tiny btn--quiet" disabled={mode !== 'watch'} onClick={() => update((d) => ({
+                    ...d,
+                    matches: d.matches.map((m) => m.id === matchId
+                      ? { ...m, defenseReviews: m.defenseReviews?.filter((item) => item.id !== review.id) }
+                      : m),
+                  }))}>Delete review</button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       )}
 
       <section className="section">
