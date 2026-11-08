@@ -39,6 +39,17 @@ export interface Player {
   hand: Hand;
 }
 
+export interface DefenseReview {
+  id: string;
+  defender: string;
+  role: 'libero' | 'blocker';
+  /** Times in seconds in the source video. */
+  contactTime: number;
+  firstStepTime?: number;
+  /** Defender's location in the video frame at contact, normalized to 0–1. */
+  contactPoint: { x: number; y: number };
+}
+
 export interface Match {
   id: string;
   name: string;
@@ -48,6 +59,7 @@ export interface Match {
   synthetic?: boolean;
   /** Recorded with the live camera: pose only, no video file. */
   live?: boolean;
+  defenseReviews?: DefenseReview[];
 }
 
 export interface Attack {

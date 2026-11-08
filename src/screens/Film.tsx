@@ -135,7 +135,10 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
                   <button className="list__item" onClick={() => onOpen(m.id)}>
                     <span className="list__main">
                       <strong>{m.name}</strong>
-                      <span className="muted">{m.synthetic ? 'Synthetic demo' : m.live ? `Live camera, ${m.date}` : m.date}</span>
+                      <span className="muted">
+                        {m.synthetic ? 'Synthetic demo' : m.live ? `Live camera, ${m.date}` : m.date}
+                        {!!m.defenseReviews?.length && ` · ${m.defenseReviews.length} defender ${m.defenseReviews.length === 1 ? 'review' : 'reviews'}`}
+                      </span>
                     </span>
                     <span className="list__count">
                       <b>{c.total}</b> {c.total === 1 ? 'attack' : 'attacks'}
