@@ -2,15 +2,16 @@ import { useState } from 'react';
 import { Section } from '../components/ui';
 import { useCloud } from '../cloud';
 
-export function Account({ onDone }: { onDone: () => void }) {
+export function Account({ onDone, onHome }: { onDone: () => void; onHome: () => void }) {
   const cloud = useCloud();
   return (
     <div className="screen">
       <div className="crumb">
         <button className="btn btn--quiet btn--tiny" onClick={onDone}>Back</button>
-        <h1 className="crumb__title">{cloud.user ? 'Account and team' : 'Sign in'}</h1>
+        <h1 className="crumb__title">{cloud.mode === 'team' ? 'Team setup' : cloud.user ? 'Account' : 'Sign in'}</h1>
+        <button className="btn btn--quiet btn--tiny" onClick={onHome}>Switch mode</button>
       </div>
-      {cloud.user ? <SignedIn /> : <SignInForm />}
+      {cloud.user ? <SignedIn onDone={onDone} /> : <SignInForm />}
     </div>
   );
 }
@@ -46,8 +47,9 @@ function SignInForm() {
   return (
     <>
       <p className="muted">
-        Sign in to back up your swings and share them with your team. Everyone on a team trains on the same data, so the
-        model learns from every phone at once. Tell works without an account too; your data just stays on this phone.
+        {cloud.mode === 'team'
+          ? 'Sign in to create or join a team and share swings with teammates.'
+          : 'Sign in to sync Individual swings privately across your devices. Guest swings move into your private workspace when you open it.'}
       </p>
       <div className="seg" role="group" aria-label="Sign in or create account">
         <button className={`seg__btn ${mode === 'in' ? 'seg__btn--on' : ''}`} onClick={() => setMode('in')}>Sign in</button>
@@ -91,7 +93,7 @@ function SignInForm() {
   );
 }
 
-function SignedIn() {
+function SignedIn({ onDone }: { onDone: () => void }) {
   const cloud = useCloud();
   const [teamName, setTeamName] = useState('');
   const [code, setCode] = useState('');
@@ -138,64 +140,77 @@ function SignedIn() {
           <strong>{(cloud.user!.user_metadata?.name as string) || cloud.user!.email}</strong>
           <span className="muted small">{cloud.user!.email}</span>
         </div>
-        <button className="btn btn--tiny" onClick={() => void cloud.signOut()}>Sign out</button>
+        <button className="btn btn--tiny" onClick={() => void run(cloud.signOut)}>Sign out</button>
       </div>
 
       {msg && <p className={`notice ${msg.bad ? 'notice--bad' : ''}`}>{msg.text}</p>}
 
-      <Section title="Your teams">
-        {cloud.teams.length === 0 ? (
-          <p className="muted small">You're not on a team yet. Create one for your squad, or join with the code a teammate sends you.</p>
-        ) : (
-          <ul className="list">
-            {cloud.teams.map((t) => (
-              <li key={t.id} className={`team ${cloud.team?.id === t.id ? 'team--on' : ''}`}>
-                <button className="team__main" onClick={() => cloud.setTeam(t.id)} aria-pressed={cloud.team?.id === t.id}>
-                  <strong>{t.name}</strong>
-                  <span className="muted small">{cloud.team?.id === t.id ? 'Syncing to this team' : 'Tap to sync to this team'}</span>
-                </button>
-                <span className="team__code" aria-label={`Team code ${t.join_code}`}>{t.join_code}</span>
-                <div className="team__acts">
-                <button className="btn btn--tiny" onClick={() => void share(t.join_code, t.name)}>Invite</button>
-                {confirmLeave === t.id ? (
-                  <button className="btn btn--tiny btn--danger" onClick={() => void run(() => cloud.leave(t.id), `You left ${t.name}.`)}>Leave team</button>
-                ) : (
-                  <button className="btn btn--tiny btn--quiet" onClick={() => setConfirmLeave(t.id)}>Leave</button>
-                )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-        {cloud.team && (
-          <div className="sync-row">
-            <span className={`dot dot--${cloud.status}`} aria-hidden />
-            <span className="small">
-              {cloud.status === 'syncing' ? cloud.message || 'Syncing…' : cloud.message || (cloud.lastSync ? 'Up to date.' : 'Not synced yet.')}
-            </span>
-            <button className="btn btn--tiny" onClick={() => void cloud.syncNow()} disabled={cloud.status === 'syncing'}>Sync now</button>
-          </div>
-        )}
-      </Section>
+      {cloud.mode === 'individual' && (
+        <Section title="Private Individual sync">
+          <SyncStatus />
+          <p className="muted small">Your tagged swings sync to this account. Original videos stay on your device.</p>
+        </Section>
+      )}
 
-      <Section title="Create a team">
-        <form className="row" onSubmit={(e) => { e.preventDefault(); if (teamName.trim()) void run(() => cloud.create(teamName.trim()).then(() => setTeamName('')), 'Team created. Tap Invite to send teammates the code.'); }}>
-          <input className="input" placeholder="Team name" value={teamName} onChange={(e) => setTeamName(e.target.value)} aria-label="Team name" />
-          <button className="btn btn--primary" type="submit" disabled={busy || !teamName.trim()}>Create</button>
-        </form>
-      </Section>
+      {cloud.mode === 'team' && <>
+        {cloud.message && cloud.status === 'error' && !cloud.team && <p className="notice notice--bad">{cloud.message}</p>}
+        <Section title="Your teams">
+          {cloud.teams.length === 0 ? (
+            <p className="muted small">You're not on a team yet. Create one for your squad, or join with the code a teammate sends you.</p>
+          ) : (
+            <ul className="list">
+              {cloud.teams.map((t) => (
+                <li key={t.id} className={`team ${cloud.team?.id === t.id ? 'team--on' : ''}`}>
+                  <button className="team__main" onClick={() => { cloud.setTeam(t.id); if (cloud.team) onDone(); }} aria-pressed={cloud.team?.id === t.id}>
+                    <strong>{t.name}</strong>
+                    <span className="muted small">{cloud.team?.id === t.id ? 'Current team' : 'Open team workspace'}</span>
+                  </button>
+                  <span className="team__code" aria-label={`Team code ${t.join_code}`}>{t.join_code}</span>
+                  <div className="team__acts">
+                  <button className="btn btn--tiny" onClick={() => void share(t.join_code, t.name)}>Invite</button>
+                  {confirmLeave === t.id ? (
+                    <button className="btn btn--tiny btn--danger" onClick={() => void run(() => cloud.leave(t.id), `You left ${t.name}.`)}>Leave team</button>
+                  ) : (
+                    <button className="btn btn--tiny btn--quiet" onClick={() => setConfirmLeave(t.id)}>Leave</button>
+                  )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          {cloud.team && <SyncStatus />}
+        </Section>
 
-      <Section title="Join a team">
-        <form className="row" onSubmit={(e) => { e.preventDefault(); if (code.trim()) void run(() => cloud.join(code.trim()).then(() => setCode('')), 'Joined. Your swings and the team\'s will sync now.'); }}>
-          <input className="input input--code" placeholder="6-letter code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={6} aria-label="Team code" autoCapitalize="characters" />
-          <button className="btn" type="submit" disabled={busy || code.trim().length < 6}>Join</button>
-        </form>
-      </Section>
+        <Section title="Create a team">
+          <form className="row" onSubmit={(e) => { e.preventDefault(); if (teamName.trim()) void run(() => cloud.create(teamName.trim()).then(() => setTeamName('')), 'Team created. Tap Invite to send teammates the code.'); }}>
+            <input className="input" placeholder="Team name" value={teamName} onChange={(e) => setTeamName(e.target.value)} aria-label="Team name" />
+            <button className="btn btn--primary" type="submit" disabled={busy || !teamName.trim()}>Create</button>
+          </form>
+        </Section>
 
-      <p className="muted small">
-        Synced: your roster, matches and swing skeletons with their labels. Never synced: videos (they never leave the
-        phone) and the demo data.
-      </p>
+        <Section title="Join a team">
+          <form className="row" onSubmit={(e) => { e.preventDefault(); if (code.trim()) void run(() => cloud.join(code.trim()).then(() => setCode('')), 'Joined. Opening the team workspace.'); }}>
+            <input className="input input--code" placeholder="6-letter code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} maxLength={6} aria-label="Team code" autoCapitalize="characters" />
+            <button className="btn" type="submit" disabled={busy || code.trim().length < 6}>Join</button>
+          </form>
+        </Section>
+
+        <p className="muted small">
+          Synced: your roster, matches and swing skeletons with their labels. Never synced: videos (they never leave the
+          phone) and the demo data.
+        </p>
+      </>}
     </>
+  );
+}
+
+function SyncStatus() {
+  const cloud = useCloud();
+  return (
+    <div className="sync-row">
+      <span className={`dot dot--${cloud.status}`} aria-hidden />
+      <span className="small" role="status">{cloud.message || (cloud.lastSync ? 'Up to date.' : 'Waiting to sync…')}</span>
+      <button className="btn btn--tiny" onClick={() => void cloud.syncNow()} disabled={cloud.status === 'syncing'}>Sync now</button>
+    </div>
   );
 }

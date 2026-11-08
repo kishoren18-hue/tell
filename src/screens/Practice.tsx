@@ -21,7 +21,7 @@ type Phase = 'playing' | 'guess' | 'reveal';
 const LEVELS = [0, 100, 200, 300, 400];
 
 export function Practice({ onGo }: { onGo: (t: Tab) => void }) {
-  const { dataset } = useData();
+  const { dataset, workspace } = useData();
   const playable = useMemo(
     () => dataset.attacks.filter((a) => a.frames && a.frames.filter(Boolean).length >= 23),
     [dataset.attacks],
@@ -39,8 +39,8 @@ export function Practice({ onGo }: { onGo: (t: Tab) => void }) {
   const rng = useRef(new Rng(Date.now() % 100000));
 
   useEffect(() => {
-    void loadPractice().then(setStats);
-  }, []);
+    void loadPractice(workspace).then(setStats);
+  }, [workspace]);
 
   const pool = hitter === 'all' ? playable : playable.filter((a) => a.hitterId === hitter);
   const attack: Attack | undefined = useMemo(() => (pool.length ? pool[rng.current.int(pool.length)] : undefined), [round, pool.length, hitter]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -149,7 +149,7 @@ export function Practice({ onGo }: { onGo: (t: Tab) => void }) {
       horizonMs,
     };
     setStats(next);
-    void savePractice(next);
+    void savePractice(workspace, next);
   };
 
   const hitterName = player ? (player.number ? `#${player.number}` : player.name) : '';
@@ -230,7 +230,7 @@ export function Practice({ onGo }: { onGo: (t: Tab) => void }) {
         </div>
       </div>
       {phase === 'reveal' && read && <p className="muted small">Yellow dashed figure: Tell's forecast of the next half second of the swing.</p>}
-      <button className="btn btn--quiet btn--tiny" onClick={() => { setStats(EMPTY_PRACTICE); void savePractice(EMPTY_PRACTICE); }}>
+      <button className="btn btn--quiet btn--tiny" onClick={() => { setStats(EMPTY_PRACTICE); void savePractice(workspace, EMPTY_PRACTICE); }}>
         Reset practice stats
       </button>
     </div>

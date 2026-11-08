@@ -1,10 +1,16 @@
 import type { User } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { createTeam, joinTeam, leaveTeam, listTeams, supabase, syncTeam, type Team } from './lib/sync';
-import { useData } from './state';
+import { createTeam, joinTeam, leaveTeam, listTeams, supabase, syncWorkspace, type Team } from './lib/sync';
+import { DataProvider, useData } from './state';
+import { loadDataset } from './lib/store';
+
+export type Mode = 'individual' | 'team' | 'legacy';
 
 interface Cloud {
   user: User | null;
+  mode: Mode | null;
+  setMode: (mode: Mode | null) => void;
+  hasLegacy: boolean;
   teams: Team[];
   team: Team | null;
   setTeam: (id: string | null) => void;
@@ -22,6 +28,7 @@ interface Cloud {
 
 const C = createContext<Cloud | null>(null);
 const TEAM_KEY = 'tell:active-team';
+const MODE_KEY = 'tell:mode';
 
 function ls(k: string, v?: string | null) {
   try {
@@ -35,94 +42,67 @@ function ls(k: string, v?: string | null) {
 }
 
 export function CloudProvider({ children }: { children: ReactNode }) {
-  const { dataset, replace, ready } = useData();
   const [user, setUser] = useState<User | null>(null);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [authReady, setAuthReady] = useState(false);
+  const [memberships, setMemberships] = useState<{ owner: string; teams: Team[] } | null>(null);
   const [teamId, setTeamId] = useState<string | null>(() => ls(TEAM_KEY));
-  const [status, setStatus] = useState<Cloud['status']>('idle');
-  const [message, setMessage] = useState('');
-  const [lastSync, setLastSync] = useState<number | null>(null);
-  const busy = useRef(false);
-  const latest = useRef(dataset);
-  latest.current = dataset;
+  const [mode, setMode] = useState<Mode | null>(() => {
+    const saved = ls(MODE_KEY);
+    return saved === 'individual' || saved === 'team' || saved === 'legacy' ? saved : null;
+  });
+  const [hasLegacy, setHasLegacy] = useState(false);
+  const [teamError, setTeamError] = useState<{ owner: string; message: string } | null>(null);
+  const userId = user?.id;
 
   useEffect(() => {
-    const sb = supabase();
-    void sb.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
-    const { data } = sb.auth.onAuthStateChange((_e, session) => setUser(session?.user ?? null));
+    const { data } = supabase().auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null);
+      setAuthReady(true);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    void loadDataset('legacy').then((d) => {
+      setHasLegacy(Boolean(d.players.length || d.matches.length || d.attacks.length));
+    }).catch(() => {});
+  }, []);
+
   const refreshTeams = useCallback(async () => {
-    if (!user) {
-      setTeams([]);
-      return;
-    }
-    try {
-      const t = await listTeams();
-      setTeams(t);
-      if (t.length && !t.some((x) => x.id === teamId)) {
-        setTeamId(t[0].id);
-        ls(TEAM_KEY, t[0].id);
-      }
-    } catch (e) {
-      setStatus('error');
-      setMessage((e as Error).message);
-    }
-  }, [user, teamId]);
+    if (!userId) return;
+    const teams = await listTeams();
+    setMemberships({ owner: userId, teams });
+    setTeamError(null);
+  }, [userId]);
 
   useEffect(() => {
-    void refreshTeams();
-  }, [refreshTeams]);
+    if (mode === 'team' && userId) void refreshTeams().catch((e: Error) => setTeamError({ owner: userId, message: e.message }));
+  }, [mode, userId, refreshTeams]);
 
-  const team = teams.find((t) => t.id === teamId) ?? null;
+  const teams = memberships?.owner === userId ? memberships?.teams ?? [] : [];
+  const team = mode === 'team' ? teams.find((t) => t.id === teamId) ?? null : null;
+  const workspace = mode === 'individual' ? (userId ? `personal:${userId}` : 'guest')
+    : mode === 'legacy' ? 'legacy'
+    : team ? `team:${userId}:${team.id}` : 'welcome';
 
-  const syncNow = useCallback(async () => {
-    if (!user || !team || busy.current) return;
-    if (!navigator.onLine) {
-      setStatus('offline');
-      setMessage('Offline. Your swings are saved on this phone and will sync later.');
-      return;
-    }
-    busy.current = true;
-    setStatus('syncing');
-    try {
-      const r = await syncTeam(team.id, latest.current, (m) => setMessage(m));
-      if (r.pulled > 0) replace(r.dataset);
-      setLastSync(Date.now());
-      setStatus('idle');
-      setMessage(
-        r.pulled > 0 || r.pushed > 0
-          ? `Synced: ${Math.max(0, r.pulled)} new from the team, ${r.pushed} uploaded.`
-          : 'Up to date.',
-      );
-    } catch (e) {
-      setStatus('error');
-      setMessage(`Sync failed: ${(e as Error).message}`);
-    } finally {
-      busy.current = false;
-    }
-  }, [user, team, replace]);
+  const selectTeam = (id: string | null) => {
+    setTeamId(id);
+    ls(TEAM_KEY, id);
+  };
+  const selectMode = (next: Mode | null) => {
+    setMode(next);
+    ls(MODE_KEY, next);
+  };
 
-  // Sync shortly after any change, and when the app opens.
-  useEffect(() => {
-    if (!ready || !user || !team) return;
-    const id = window.setTimeout(() => void syncNow(), 4000);
-    return () => window.clearTimeout(id);
-  }, [dataset, ready, user, team, syncNow]);
-
+  const error = mode === 'team' && teamError?.owner === userId ? teamError?.message ?? '' : '';
   const value: Cloud = {
-    user,
-    teams,
-    team,
-    setTeam: (id) => {
-      setTeamId(id);
-      ls(TEAM_KEY, id);
-    },
-    status,
-    message,
-    lastSync,
-    syncNow,
+    user, teams, team, mode, hasLegacy,
+    setMode: selectMode,
+    setTeam: selectTeam,
+    status: error ? 'error' : 'idle',
+    message: error,
+    lastSync: null,
+    syncNow: async () => {},
     signIn: async (email, password) => {
       const { error } = await supabase().auth.signInWithPassword({ email, password });
       if (error) throw new Error(error.message === 'Invalid login credentials' ? 'Wrong email or password.' : error.message);
@@ -137,33 +117,102 @@ export function CloudProvider({ children }: { children: ReactNode }) {
       return data.session ? 'done' : 'confirm';
     },
     signOut: async () => {
-      await supabase().auth.signOut();
-      setTeams([]);
+      const { error } = await supabase().auth.signOut();
+      if (error) throw new Error(error.message);
+      setMemberships(null);
+      selectMode(null);
     },
     create: async (name) => {
       const t = await createTeam(name, (user?.user_metadata?.name as string) || undefined);
       await refreshTeams();
-      setTeamId(t.id);
-      ls(TEAM_KEY, t.id);
+      selectTeam(t.id);
       return t;
     },
     join: async (code) => {
       const t = await joinTeam(code, (user?.user_metadata?.name as string) || undefined);
       await refreshTeams();
-      setTeamId(t.id);
-      ls(TEAM_KEY, t.id);
+      selectTeam(t.id);
       return t;
     },
     leave: async (id) => {
       await leaveTeam(id);
       if (teamId === id) {
-        setTeamId(null);
-        ls(TEAM_KEY, null);
+        selectTeam(null);
       }
       await refreshTeams();
     },
   };
-  return <C.Provider value={value}>{children}</C.Provider>;
+  if (!authReady) return <p className="muted pad">Opening Tell…</p>;
+  return (
+    <DataProvider key={workspace} workspace={workspace}>
+      <WorkspaceCloud value={value}>{children}</WorkspaceCloud>
+    </DataProvider>
+  );
+}
+
+const activeSyncs = new Set<string>();
+
+function WorkspaceCloud({ value, children }: { value: Cloud; children: ReactNode }) {
+  const { dataset, ready, workspace, applySync, getDataset } = useData();
+  const [status, setStatus] = useState<Cloud['status']>('idle');
+  const [message, setMessage] = useState('');
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const mounted = useRef(false);
+  const userId = value.user?.id;
+  const teamId = value.team?.id;
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  const syncNow = useCallback(async () => {
+    if (!ready || !userId || (!teamId && !workspace.startsWith('personal:')) || activeSyncs.has(workspace)) return;
+    if (!navigator.onLine) {
+      setStatus('offline');
+      setMessage('Offline. Swings are saved on this device and will sync when you reconnect.');
+      return;
+    }
+    activeSyncs.add(workspace);
+    setStatus('syncing');
+    const before = getDataset();
+    try {
+      const result = await syncWorkspace(teamId ? { teamId } : { userId }, workspace, before, (msg) => {
+        if (mounted.current) setMessage(msg);
+      });
+      if (!mounted.current) return;
+      await applySync(before, result.dataset, result.key, result.state);
+      setLastSync(Date.now());
+      setStatus('idle');
+      setMessage('Up to date.');
+    } catch (e) {
+      if (!mounted.current) return;
+      setStatus('error');
+      setMessage(`Sync failed: ${(e as Error).message}`);
+    } finally {
+      activeSyncs.delete(workspace);
+    }
+  }, [ready, userId, teamId, workspace, applySync, getDataset]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void syncNow(), 1500);
+    return () => window.clearTimeout(timer);
+  }, [dataset, syncNow]);
+
+  useEffect(() => {
+    if (!ready || !userId || (!teamId && !workspace.startsWith('personal:'))) return;
+    const refresh = () => void syncNow();
+    window.addEventListener('online', refresh);
+    window.addEventListener('focus', refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => {
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('focus', refresh);
+      window.clearInterval(timer);
+    };
+  }, [ready, userId, teamId, workspace, syncNow]);
+
+  return <C.Provider value={{ ...value, status: value.message ? value.status : status, message: value.message || message, lastSync, syncNow }}>{children}</C.Provider>;
 }
 
 export function useCloud(): Cloud {

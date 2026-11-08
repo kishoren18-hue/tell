@@ -9,7 +9,7 @@ import { ContactDetector, OneEuro, PoseBuffer, poseBox } from '../lib/live';
 import { fitLive, readFrames, usableAttacks, type LiveModels, type LiveRead } from '../lib/ml/tell';
 import { BONES } from '../lib/pose';
 import type { Attack, AttackPosition, Direction, Hand, PoseFrame } from '../lib/types';
-import { DIRECTIONS, uid } from '../lib/types';
+import { INDIVIDUAL_HITTER, DIRECTIONS, uid } from '../lib/types';
 import { useData } from '../state';
 
 // Two ways to use the camera:
@@ -51,7 +51,7 @@ export interface SwingDraft {
 }
 
 export function Live({ onGo }: { onGo: (t: Tab) => void }) {
-  const { dataset } = useData();
+  const { dataset, individual } = useData();
   const [cam, setCam] = useState<Cam>({ state: 'off' });
   const [mode, setMode] = useState<'read' | 'record'>('read');
   const [facing, setFacing] = useState<'environment' | 'user'>('environment');
@@ -59,7 +59,7 @@ export function Live({ onGo }: { onGo: (t: Tab) => void }) {
   const [people, setPeople] = useState(0);
   const [locked, setLocked] = useState(false);
   const [probs, setProbs] = useState<number[] | null>(null);
-  const [hitterId, setHitterId] = useState<string | undefined>(undefined);
+  const [selectedHitter, setHitterId] = useState<string | undefined>(undefined);
   const [position, setPosition] = useState<AttackPosition>('left');
   const [draft, setDraft] = useState<SwingDraft | null>(null);
   const [recording, setRecording] = useState<{ started: number } | null>(null);
@@ -87,6 +87,7 @@ export function Live({ onGo }: { onGo: (t: Tab) => void }) {
   const settings = useRef({ hand: 'R' as Hand, position, live: null as LiveModels | null, paused: false, mode, recording: false, ballOn });
 
   const players = dataset.players.filter((p) => !p.id.startsWith('demo-'));
+  const hitterId = individual ? players[0]?.id : selectedHitter;
   const hand: Hand = dataset.players.find((p) => p.id === hitterId)?.hand ?? 'R';
   const realUsable = useMemo(() => usableAttacks({ ...dataset, attacks: dataset.attacks.filter((a) => !a.matchId.startsWith('demo-')) }).usable.length, [dataset]);
   const allUsable = useMemo(() => usableAttacks(dataset).usable.length, [dataset]);
@@ -676,7 +677,7 @@ function SwingSheet({
   onGo: (t: Tab) => void;
   source: 'live' | 'record';
 }) {
-  const { update } = useData();
+  const { individual, update } = useData();
   const [landing, setLanding] = useState<{ x: number; y: number } | undefined>();
   const [manual, setManual] = useState<Direction | undefined>(draft.suggestion?.direction);
   const [newPlayer, setNewPlayer] = useState('');
@@ -686,8 +687,8 @@ function SwingSheet({
 
   const addPlayer = () => {
     const n = newPlayer.trim();
-    if (!n) return;
-    const id = uid('p');
+    if (!n || (individual && players.length)) return;
+    const id = individual ? INDIVIDUAL_HITTER : uid('p');
     const isNum = /^\d+$/.test(n);
     update((d) => ({ ...d, players: [...d.players, { id, name: isNum ? `#${n}` : n, number: isNum ? n : undefined, hand: 'R' }] }));
     setHitterId(id);
@@ -775,9 +776,9 @@ function SwingSheet({
               {p.number ? `#${p.number}` : p.name}
             </button>
           ))}
-          <form className="chip-add" onSubmit={(e) => { e.preventDefault(); addPlayer(); }}>
+          {(!individual || players.length === 0) && <form className="chip-add" onSubmit={(e) => { e.preventDefault(); addPlayer(); }}>
             <input className="input input--chip" placeholder="New #" value={newPlayer} onChange={(e) => setNewPlayer(e.target.value)} aria-label="Add hitter" />
-          </form>
+          </form>}
         </div>
       </fieldset>
       <button className="btn btn--primary btn--big" disabled={!hitterId || !direction} onClick={save}>

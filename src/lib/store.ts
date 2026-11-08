@@ -2,7 +2,7 @@
 // or even stored: Tell keeps only the pose skeletons and your tags, which are
 // small and don't show anyone's face.
 
-import { get, set, del } from 'idb-keyval';
+import { get, set, del, getMany, setMany } from 'idb-keyval';
 import type { Report } from './ml/tell';
 import type { Dataset } from './types';
 import { emptyDataset } from './types';
@@ -11,18 +11,34 @@ const KEY_DATASET = 'tell:dataset:v1';
 const KEY_REPORT = 'tell:report:v1';
 const KEY_PRACTICE = 'tell:practice:v1';
 
-export async function loadDataset(): Promise<Dataset> {
-  return ((await get(KEY_DATASET)) as Dataset | undefined) ?? emptyDataset();
+const scoped = (key: string, workspace: string) => workspace === 'legacy' ? key : `${key}:${workspace}`;
+export const datasetKey = (workspace: string) => scoped(KEY_DATASET, workspace);
+
+export async function loadDataset(workspace: string): Promise<Dataset> {
+  return (await get<Dataset>(datasetKey(workspace))) ?? emptyDataset();
 }
-export async function saveDataset(ds: Dataset): Promise<void> {
-  await set(KEY_DATASET, ds);
+export async function saveDataset(workspace: string, ds: Dataset): Promise<void> {
+  await set(datasetKey(workspace), ds);
 }
-export async function loadReport(): Promise<Report | null> {
-  return ((await get(KEY_REPORT)) as Report | undefined) ?? null;
+export async function loadReport(workspace: string): Promise<Report | null> {
+  return (await get<Report>(scoped(KEY_REPORT, workspace))) ?? null;
 }
-export async function saveReport(r: Report | null): Promise<void> {
-  if (r) await set(KEY_REPORT, r);
-  else await del(KEY_REPORT);
+export async function saveReport(workspace: string, r: Report | null): Promise<void> {
+  const key = scoped(KEY_REPORT, workspace);
+  if (r) await set(key, r);
+  else await del(key);
+}
+
+/** Move guest data only to the first private workspace opened after signing in. */
+export async function loadPrivateDataset(workspace: string): Promise<Dataset> {
+  const migrate = async () => {
+    const [personal, guest] = await getMany<Dataset | undefined>([datasetKey(workspace), datasetKey('guest')]);
+    if (!guest || !(guest.players.length || guest.matches.length || guest.attacks.length)) return personal ?? emptyDataset();
+    const merged = mergeDatasets(personal ?? emptyDataset(), guest);
+    await setMany([[datasetKey(workspace), merged], [datasetKey('guest'), emptyDataset()]]);
+    return merged;
+  };
+  return navigator.locks ? navigator.locks.request('tell:guest-migration', migrate) : migrate();
 }
 
 export interface PracticeStats {
@@ -34,11 +50,11 @@ export interface PracticeStats {
   horizonMs: number;
 }
 export const EMPTY_PRACTICE: PracticeStats = { attempts: 0, correct: 0, modelCorrect: 0, modelAttempts: 0, bestStreak: 0, horizonMs: 0 };
-export async function loadPractice(): Promise<PracticeStats> {
-  return ((await get(KEY_PRACTICE)) as PracticeStats | undefined) ?? EMPTY_PRACTICE;
+export async function loadPractice(workspace: string): Promise<PracticeStats> {
+  return ((await get(scoped(KEY_PRACTICE, workspace))) as PracticeStats | undefined) ?? EMPTY_PRACTICE;
 }
-export async function savePractice(p: PracticeStats): Promise<void> {
-  await set(KEY_PRACTICE, p);
+export async function savePractice(workspace: string, p: PracticeStats): Promise<void> {
+  await set(scoped(KEY_PRACTICE, workspace), p);
 }
 
 /** Merge another export into this dataset (for combining phones or teammates). Same ids are kept once. */

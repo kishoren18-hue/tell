@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DataProvider, useData } from './state';
+import { useData } from './state';
 import { Film } from './screens/Film';
 import { Tag } from './screens/Tag';
 import { Results } from './screens/Results';
@@ -20,7 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 function Shell() {
-  const { ready } = useData();
+  const { ready, error } = useData();
   const cloud = useCloud();
   const [tab, setTabState] = useState<Tab>('film');
   const [matchId, setMatchId] = useState<string | null>(null);
@@ -29,20 +29,51 @@ function Shell() {
     setAccount(false);
     setTabState(t);
   };
+  const needsTeam = cloud.mode === 'team' && !cloud.team;
+  const home = () => {
+    setAccount(false);
+    setMatchId(null);
+    setTabState('film');
+    cloud.setMode(null);
+  };
+  if (!cloud.mode && !account) return (
+    <main className="welcome">
+      <div className="welcome__top">
+        <span className="wordmark">Tell</span>
+        <button className="btn btn--tiny" onClick={() => setAccount(true)}>{cloud.user ? 'Account' : 'Sign in'}</button>
+      </div>
+      <div className="intro">
+        <h1>How readable is your spike?</h1>
+        <p>Track your swings and see what gives away where you’ll hit.</p>
+      </div>
+      <div className="welcome__choices">
+        <button className="welcome__choice" onClick={() => cloud.setMode('individual')}>
+          <strong>Individual</strong>
+          <span>Track one hitter. {cloud.user ? 'Sync privately across your devices.' : 'Start on this device or sign in to sync.'}</span>
+        </button>
+        <button className="welcome__choice" onClick={() => cloud.setMode('team')}>
+          <strong>Team</strong>
+          <span>Track multiple hitters and share swings with teammates.</span>
+        </button>
+      </div>
+      {cloud.hasLegacy && <button className="btn btn--quiet" onClick={() => cloud.setMode('legacy')}>Open previous device data</button>}
+    </main>
+  );
+  const showingAccount = account || needsTeam;
   const initial = (((cloud.user?.user_metadata?.name as string) || cloud.user?.email || '?')[0] ?? '?').toUpperCase();
 
   return (
     <div className="app">
       <header className="topbar">
-        <button className="wordmark" onClick={() => { setTab('film'); setMatchId(null); }} aria-label="Tell home">
+        <button className="wordmark" onClick={home} aria-label="Tell home">
           Tell
         </button>
-        <span className="topbar__tag">How readable is your spike?</span>
+        <span className="topbar__tag">{cloud.team?.name ?? (cloud.mode === 'individual' ? 'Individual' : cloud.mode === 'legacy' ? 'Previous device data' : 'How readable is your spike?')}</span>
         <button className="topbar__account" onClick={() => setAccount(true)} aria-label={cloud.user ? 'Account and team' : 'Sign in'}>
           {cloud.user ? (
             <>
               <span className="avatar">{initial}</span>
-              {cloud.team && <span className={`dot dot--${cloud.status}`} aria-hidden />}
+              {(cloud.team || cloud.mode === 'individual') && <span className={`dot dot--${cloud.status}`} aria-hidden />}
             </>
           ) : (
             'Sign in'
@@ -50,10 +81,12 @@ function Shell() {
         </button>
       </header>
       <main className={`main ${tab === 'live' ? 'main--wide' : ''}`} id="main">
-        {!ready ? (
+        {error ? (
+          <p className="notice notice--bad" role="alert">{error}</p>
+        ) : !ready ? (
           <p className="muted pad">Loading your matches…</p>
-        ) : account ? (
-          <Account onDone={() => setAccount(false)} />
+        ) : showingAccount ? (
+          <Account onDone={needsTeam ? home : () => setAccount(false)} onHome={home} />
         ) : tab === 'film' ? (
           matchId ? <Tag matchId={matchId} onBack={() => setMatchId(null)} /> : <Film onOpen={setMatchId} onGo={setTab} />
         ) : tab === 'live' ? (
@@ -66,7 +99,7 @@ function Shell() {
           <Practice onGo={setTab} />
         )}
       </main>
-      <nav className="tabbar" aria-label="Sections">
+      {!showingAccount && <nav className="tabbar" aria-label="Sections">
         {TABS.map((t) => (
           <button
             key={t.id}
@@ -78,7 +111,7 @@ function Shell() {
             <span>{t.label}</span>
           </button>
         ))}
-      </nav>
+      </nav>}
     </div>
   );
 }
@@ -122,11 +155,9 @@ function TabIcon({ id }: { id: Tab }) {
 
 export default function App() {
   return (
-    <DataProvider>
-      <CloudProvider>
-        <Shell />
-      </CloudProvider>
-    </DataProvider>
+    <CloudProvider>
+      <Shell />
+    </CloudProvider>
   );
 }
 
