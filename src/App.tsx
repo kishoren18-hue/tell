@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useData } from './state';
+import { cloudConfigured } from './lib/sync';
 import { Film } from './screens/Film';
 import { Tag } from './screens/Tag';
 import { Results } from './screens/Results';
@@ -40,7 +41,7 @@ function Shell() {
     <main className="welcome">
       <div className="welcome__top">
         <span className="wordmark">Tell</span>
-        <button className="btn btn--tiny" onClick={() => setAccount(true)}>{cloud.user ? 'Account' : 'Sign in'}</button>
+        {cloudConfigured && <button className="btn btn--tiny" onClick={() => setAccount(true)}>{cloud.user ? 'Account' : 'Sign in'}</button>}
       </div>
       <div className="intro">
         <h1>How readable is your spike?</h1>
@@ -49,12 +50,12 @@ function Shell() {
       <div className="welcome__choices">
         <button className="welcome__choice" onClick={() => cloud.setMode('individual')}>
           <strong>Individual</strong>
-          <span>Track one hitter. {cloud.user ? 'Sync privately across your devices.' : 'Start on this device or sign in to sync.'}</span>
+          <span>Track one hitter. {cloud.user ? 'Sync privately across your devices.' : cloudConfigured ? 'Start on this device or sign in to sync.' : 'Keep your reviews on this device.'}</span>
         </button>
-        <button className="welcome__choice" onClick={() => cloud.setMode('team')}>
+        {cloudConfigured && <button className="welcome__choice" onClick={() => cloud.setMode('team')}>
           <strong>Team</strong>
           <span>Track multiple hitters and share swings with teammates.</span>
-        </button>
+        </button>}
       </div>
       {cloud.hasLegacy && <button className="btn btn--quiet" onClick={() => cloud.setMode('legacy')}>Open previous device data</button>}
     </main>
@@ -69,7 +70,7 @@ function Shell() {
           Tell
         </button>
         <span className="topbar__tag">{cloud.team?.name ?? (cloud.mode === 'individual' ? 'Individual' : cloud.mode === 'legacy' ? 'Previous device data' : 'How readable is your spike?')}</span>
-        <button className="topbar__account" onClick={() => setAccount(true)} aria-label={cloud.user ? 'Account and team' : 'Sign in'}>
+        {cloudConfigured && <button className="topbar__account" onClick={() => setAccount(true)} aria-label={cloud.user ? 'Account and team' : 'Sign in'}>
           {cloud.user ? (
             <>
               <span className="avatar">{initial}</span>
@@ -78,7 +79,7 @@ function Shell() {
           ) : (
             'Sign in'
           )}
-        </button>
+        </button>}
       </header>
       <main className={`main ${tab === 'live' ? 'main--wide' : ''}`} id="main">
         {error ? (

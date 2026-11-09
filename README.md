@@ -87,7 +87,15 @@ pytest -q                                     # includes a TypeScript/Python fea
 
 More in [ml/README.md](ml/README.md). The export format is in [docs/DATA_FORMAT.md](docs/DATA_FORMAT.md).
 
-## Deploying private sync
+## Hosting your own copy
+
+Without Supabase configuration, Tell runs in Individual mode and stores data in the current browser. To enable accounts and shared workspaces on a new Supabase project:
+
+1. Run [the team schema](supabase/tell_schema.sql), then [the private workspace migration](supabase/tell_personal_items.sql) in the new project's SQL Editor.
+2. Set `VITE_SUPABASE_URL` to that project's URL and `VITE_SUPABASE_KEY` to its **publishable** key in the frontend build environment.
+3. Set the deployed origin as the Supabase Auth Site URL and allow its `/?signed-up=1` redirect. Rebuild and deploy Tell with those variables.
+
+## Deploying private sync on an existing project
 
 Apply [the private workspace migration](supabase/tell_personal_items.sql) to the existing Supabase project before releasing this version. It stores one authenticated user's private items separately from the existing team tables. Existing local datasets can be opened through **Open previous device data** on the welcome page. That workspace stays on the device because older datasets could contain a mix of personal and team swings.
 

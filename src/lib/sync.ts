@@ -9,12 +9,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { get } from 'idb-keyval';
 import type { Attack, Dataset, Match, Player } from './types';
 
-const URL = import.meta.env.VITE_SUPABASE_URL ?? 'https://fjjgdhezagebqliomjro.supabase.co';
-// Publishable key: safe to ship in the browser; row-level security does the protecting.
-const KEY = import.meta.env.VITE_SUPABASE_KEY ?? 'sb_publishable_wav5rZtmtMpGVrvJdziwQw__dZJf_kD';
+const URL = import.meta.env.VITE_SUPABASE_URL?.trim();
+const KEY = import.meta.env.VITE_SUPABASE_KEY?.trim();
+export const cloudConfigured = Boolean(URL && KEY);
 
 let client: SupabaseClient | null = null;
 export function supabase(): SupabaseClient {
+  if (!URL || !KEY) throw new Error('Cloud sync has not been configured for this deployment.');
   if (!client) client = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'tell-auth' } });
   return client;
 }
