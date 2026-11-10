@@ -2,6 +2,7 @@
 begin;
 
 create schema if not exists private;
+grant usage on schema private to authenticated;
 
 create table public.tell_teams (
   id uuid primary key default gen_random_uuid(),
@@ -65,10 +66,11 @@ begin
   return new;
 end;
 $$;
+revoke all on function private.tell_stamp_item() from public, anon, authenticated;
 create trigger tell_stamp_item before insert or update on public.tell_items
   for each row execute function private.tell_stamp_item();
 
-create function public.tell_create_team(team_name text, member_name text default null)
+create function private.tell_create_team(team_name text, member_name text default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   requester uuid := auth.uid();
@@ -96,7 +98,7 @@ begin
 end;
 $$;
 
-create function public.tell_join_team(code text, member_name text default null)
+create function private.tell_join_team(code text, member_name text default null)
 returns jsonb language plpgsql security definer set search_path = '' as $$
 declare
   requester uuid := auth.uid();
@@ -111,6 +113,19 @@ begin
     on conflict (team_id, user_id) do nothing;
   return to_jsonb(team);
 end;
+$$;
+
+revoke all on function private.tell_create_team(text, text), private.tell_join_team(text, text) from public, anon;
+grant execute on function private.tell_create_team(text, text), private.tell_join_team(text, text) to authenticated;
+
+create function public.tell_create_team(team_name text, member_name text default null)
+returns jsonb language sql security invoker set search_path = '' as $$
+  select private.tell_create_team(team_name, member_name);
+$$;
+
+create function public.tell_join_team(code text, member_name text default null)
+returns jsonb language sql security invoker set search_path = '' as $$
+  select private.tell_join_team(code, member_name);
 $$;
 
 revoke all on function public.tell_create_team(text, text), public.tell_join_team(text, text) from public, anon;
