@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useData } from './state';
 import { cloudConfigured } from './lib/sync';
+import { SwingPreview } from './components/SwingPreview';
 import { Film } from './screens/Film';
 import { Tag } from './screens/Tag';
 import { Results } from './screens/Results';
@@ -44,16 +45,17 @@ function Shell() {
         {cloudConfigured && <button className="btn btn--tiny" onClick={() => setAccount(true)}>{cloud.user ? 'Account' : 'Sign in'}</button>}
       </div>
       <div className="intro">
-        <h1>How readable is your spike?</h1>
+        <h1>How readable<br />is your spike?</h1>
         <p>Track your swings and see what gives away where you’ll hit.</p>
       </div>
+      <SwingPreview />
       <div className="welcome__choices">
         <button className="welcome__choice" onClick={() => cloud.setMode('individual')}>
-          <strong>Individual</strong>
+          <span className="welcome__choice-heading"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="12" cy="8" r="3" /><path d="M5 21v-3a7 7 0 0 1 14 0v3" /></svg><strong>Individual</strong></span>
           <span>Track one hitter. {cloud.user ? 'Sync privately across your devices.' : cloudConfigured ? 'Start on this device or sign in to sync.' : 'Keep your reviews on this device.'}</span>
         </button>
         {cloudConfigured && <button className="welcome__choice" onClick={() => cloud.setMode('team')}>
-          <strong>Team</strong>
+          <span className="welcome__choice-heading"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><circle cx="9" cy="8" r="3" /><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 5a3 3 0 0 1 0 6m2 3a6 6 0 0 1 3 5v2" /></svg><strong>Team</strong></span>
           <span>Track multiple hitters and share swings with teammates.</span>
         </button>}
       </div>
@@ -118,36 +120,36 @@ function Shell() {
 }
 
 function TabIcon({ id }: { id: Tab }) {
-  const common = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true };
+  const common = { width: 22, height: 22, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   if (id === 'film')
     return (
-      <svg {...common}>
+      <svg {...common} aria-hidden="true">
         <rect x="3" y="6" width="13" height="12" rx="2" />
         <path d="M16 10l5-3v10l-5-3" />
       </svg>
     );
   if (id === 'live')
     return (
-      <svg {...common}>
+      <svg {...common} aria-hidden="true">
         <circle cx="12" cy="12" r="3.2" />
         <path d="M5.6 5.6a9 9 0 0 0 0 12.8M18.4 5.6a9 9 0 0 1 0 12.8M8.5 8.5a5 5 0 0 0 0 7M15.5 8.5a5 5 0 0 1 0 7" />
       </svg>
     );
   if (id === 'results')
     return (
-      <svg {...common}>
+      <svg {...common} aria-hidden="true">
         <path d="M4 19V5M4 19h16" />
         <path d="M7 15l4-4 3 3 5-6" />
       </svg>
     );
   if (id === 'hitters')
     return (
-      <svg {...common}>
+      <svg {...common} aria-hidden="true">
         <path d="M8 4l-4 3 2 3 2-1v11h8V9l2 1 2-3-4-3h-2a2 2 0 0 1-4 0z" />
       </svg>
     );
   return (
-    <svg {...common}>
+    <svg {...common} aria-hidden="true">
       <circle cx="12" cy="12" r="8" />
       <path d="M12 4c2 3 2 13 0 16M4.5 9c4 1 11 1 15 0M5 15.5c4-1.2 10-1.2 14 0" />
     </svg>

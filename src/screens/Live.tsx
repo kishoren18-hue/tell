@@ -626,7 +626,7 @@ function RecordReview({
         ) : (
           <div className="review__novideo">This browser can't record video, but the skeleton and ball track were saved.</div>
         )}
-        <canvas ref={canvasRef} className="review__canvas" />
+        <canvas ref={canvasRef} className="review__canvas" aria-hidden="true" />
       </div>
       {review.url && (
         <div className="transport">
