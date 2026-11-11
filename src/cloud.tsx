@@ -1,6 +1,6 @@
 import type { User } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
-import { createTeam, joinTeam, leaveTeam, listTeams, supabase, syncWorkspace, type Team } from './lib/sync';
+import { cloudConfigured, createTeam, joinTeam, leaveTeam, listTeams, supabase, syncWorkspace, type Team } from './lib/sync';
 import { DataProvider, useData } from './state';
 import { loadDataset } from './lib/store';
 
@@ -43,18 +43,19 @@ function ls(k: string, v?: string | null) {
 
 export function CloudProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [authReady, setAuthReady] = useState(false);
+  const [authReady, setAuthReady] = useState(!cloudConfigured);
   const [memberships, setMemberships] = useState<{ owner: string; teams: Team[] } | null>(null);
   const [teamId, setTeamId] = useState<string | null>(() => ls(TEAM_KEY));
   const [mode, setMode] = useState<Mode | null>(() => {
     const saved = ls(MODE_KEY);
-    return saved === 'individual' || saved === 'team' || saved === 'legacy' ? saved : null;
+    return saved === 'individual' || saved === 'legacy' || (cloudConfigured && saved === 'team') ? saved : null;
   });
   const [hasLegacy, setHasLegacy] = useState(false);
   const [teamError, setTeamError] = useState<{ owner: string; message: string } | null>(null);
   const userId = user?.id;
 
   useEffect(() => {
+    if (!cloudConfigured) return;
     const { data } = supabase().auth.onAuthStateChange((_e, session) => {
       setUser(session?.user ?? null);
       setAuthReady(true);

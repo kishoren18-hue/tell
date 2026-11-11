@@ -91,8 +91,6 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
         </p>
       </div>
 
-      <RealSwings onGo={onGo} />
-
       {msg && (
         <p className="notice" role="status">
           {msg}
@@ -163,6 +161,8 @@ export function Film({ onOpen, onGo }: { onOpen: (id: string) => void; onGo: (t:
           </div>
         )}
       </Section>
+
+      <RealSwings onGo={onGo} />
 
       <Roster />
 
